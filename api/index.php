@@ -1,4 +1,18 @@
 <?php
+
+/* 
+como Angular corre en el puerto 4200 con su servidor interno y XAMPP corre en el 80 
+el navegador bloqueará la conexión por seguridad.
+para su correcta vinculacion se requiere usar...
+*/
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Headers: Authorization, Content-Type");
+header("Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS");
+
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    die;
+}
+
 // Para obtener la variable $link de la conexion a la BD
 require_once "../config/config.php";
 
@@ -70,7 +84,7 @@ function postRestore()
     }
 
     //Ruta al archivo SQL
-    $sqlFile = "../database/musiclab_db.sql"; 
+    $sqlFile = "../database/musiclab_db.sql";
     
     if (!file_exists($sqlFile)) {
         outputJson(["error" => "Archivo SQL no encontrado"], 500);
