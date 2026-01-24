@@ -513,12 +513,84 @@ function deleteUsers($id)
     }
 
     // Ejecución del DELETE
-    $sql_delete = "DELETE FROM users WHERE id = $id_eliminar";
+    $sql_delete = "DELETE FROM 
+                        users 
+                    WHERE 
+                        id = $id_eliminar";
     
     if (mysqli_query($link, $sql_delete)) {
         outputJson(["status" => "success", "message" => "Se eliminó el usuario correctamente"]);
     } else {
         outputError(500);
+    }
+}
+
+// Cualquiera puedo eliminar sus propios registros pero los admin y el Owner pueden borrar las publicaciones de los usuarios
+// Los admin no pueden tocar al Owner
+function deletePosts($id)
+{
+    global $link;
+    $publicacion_a_eliminar = (int)$id;
+
+    // el que esta logueado
+    $editor = validarToken();
+    $id_editor = (int)$editor['id'];
+    $editor_role = (int)$editor['role'];
+
+    // Comprobar si existe es publicacion...
+    $sql_busqueda = "SELECT
+                        *
+                    FROM
+                        posts
+                    WHERE
+                        id = $publicacion_a_eliminar";
+    
+    $res = mysqli_query($link, $sql_busqueda);
+    $existe = mysqli_fetch_assoc($res);
+
+    // datos del autor de la publicacion
+    $usuario_publicacion = (int)['user_id'];
+    $usuario_publicacion_role = (int)['role'];
+
+    if(!$existe)
+    {
+        outputError(404); // not found
+    }
+
+    $sql_delete = "DELETE FROM
+                posts
+            WHERE
+                id = $publicacion_a_eliminar";
+
+    $puede_borrar = false;
+
+    // Comprobaciones...
+    // si el editor es el mismo...puede hacerlo
+    if($id_editor === $usuario_publicacion)
+    {
+        $puede_borrar = true;
+    }
+    // si es el Owner...puede borrar la que quiera
+    else if($rol_editor === 2)
+    {
+        $puede_borrar = true;
+    }
+    // los admin pueden eliminar las publicaciones de los usuarios
+    else if ($rol_editor === 1 && $usuario_publicacion_role === 0) {
+        $puede_borrar = true;
+    }
+    // ejecutar la peticion sql...
+    if($puede_borrar)
+    {
+        if (mysqli_query($link, $sql_delete)) {
+            outputJson(["status" => "success", "message" => "Se eliminó la publicacion correctamente"]);
+        } else {
+            outputError(500);
+        }
+    }
+    else
+    {
+        outputError(401); // no tiene permisos para borrar esta publicacion...
     }
 }
 
