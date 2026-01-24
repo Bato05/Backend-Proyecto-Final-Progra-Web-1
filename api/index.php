@@ -27,7 +27,7 @@ $funcionNombre = $metodo . ucfirst($accion[0]); // funcion contruida con el meto
 $parametros = array_slice($accion, 1); // parametros de la funcion
 
 // Si hay parametros y es GET 
-if (count($parametros) >0 && $metodo == 'get') {
+if (count($parametros) > 0 && $metodo == 'get') {
     $funcionNombre = $funcionNombre.'ConParametros';
 }
 
@@ -474,4 +474,52 @@ function patchUsers($id)
         outputError(500);
     }
 }
+
+function deleteUsers($id) 
+{
+    global $link;
+    $id_eliminar = (int) $id;
+
+    //Validamos el token y obtenemos quién hace la petición
+    $editor = validarToken();
+    $id_editor = (int) $editor['id'];
+    $rol_editor = (int) $editor['role'];
+
+    $sql_busqueda = "SELECT
+                        role
+                    FROM
+                        users
+                    WHERE
+                        id = $id_eliminar";
+
+    $res_busqueda = mysqli_query($link, $sql_busqueda);
+    $usuario_a_borrar = mysqli_fetch_assoc($res_busqueda);
+
+    // si el usuario no existe... es un not found
+    if(!$usuario_a_borrar)
+    {
+        outputError(404);
+    }
+
+    $rol_a_borrar = (int)$usuario_a_borrar['role'];
+
+    // Solo el Owner (2) o Admin (1) pueden borrar, y SOLO pueden borrar Artistas (0)
+    $es_autorizado = ($rol_editor >= 1 && $rol_a_borrar === 0);
+    
+    // El Owner (2) también puede borrarse a sí mismo o a Admins si lo deseas, 
+    // pero según tu esquema:
+    if (!$es_autorizado) {
+        outputError(401); // No autorizado
+    }
+
+    // Ejecución del DELETE
+    $sql_delete = "DELETE FROM users WHERE id = $id_eliminar";
+    
+    if (mysqli_query($link, $sql_delete)) {
+        outputJson(["status" => "success", "message" => "Se eliminó el usuario correctamente"]);
+    } else {
+        outputError(500);
+    }
+}
+
 ?>
