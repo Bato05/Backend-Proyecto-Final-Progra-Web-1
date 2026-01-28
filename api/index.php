@@ -227,6 +227,7 @@ function getPosts()
                    p.description, 
                    p.file_url, 
                    p.file_type, 
+                   p.created_at,
                    CONCAT(u.first_name, ' ', u.last_name) as artist_name 
             FROM 
                 posts p
@@ -268,7 +269,9 @@ function postUsers()
     $first_name = mysqli_real_escape_string($link, $data['first_name']);
     $last_name = mysqli_real_escape_string($link, $data['last_name']);
     $email = mysqli_real_escape_string($link, $data['email']);
-    $artist_type = mysqli_real_escape_string($link, $data['artist_type']);
+    // Convertir el array de instrumentos de Angular a un string para la BD
+    $artist_type_raw = is_array($data['artist_type']) ? implode(', ', $data['artist_type']) : $data['artist_type'];
+    $artist_type = mysqli_real_escape_string($link, $artist_type_raw);
     $bio = !empty($data['bio']) ? mysqli_real_escape_string($link, $data['bio']) : '';
     
     // El password a texto plano
@@ -298,7 +301,7 @@ function postUsers()
 }
 
 function generarJWT($id, $email, $role) {
-    $key = "Tu_Clave_Secreta_MusicLab_2026"; // Tu llave maestra
+    $key = "Tu_Clave_Secreta_MusicLab_2026"; // llave maestra
 
     // 1. Header (Tipo de token y algoritmo)
     $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
@@ -323,7 +326,7 @@ function validarToken()
 {
     $headers = apache_request_headers(); 
     
-    // Normalizamos la búsqueda del header (algunos servidores usan minúsculas)
+    // búsqueda del header
     $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? null;
 
     if (!$authHeader) {
