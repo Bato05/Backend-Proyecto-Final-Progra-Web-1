@@ -8,6 +8,7 @@ para su correcta vinculacion se requiere usar...
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Authorization, Content-Type");
 header("Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS");
+header("Access-Control-Expose-Headers: Content-Disposition");
 
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     die;
@@ -77,37 +78,27 @@ function postRestore()
 {
     global $link;
     
-    //Solo el Owner (rol 2) debería poder resetear la DB
-    $usuario = validarToken();
-    if ((int)$usuario['role'] != 2) {
-        outputError(401);
-    }
+    // Leemos el JSON que envías desde Postman
+    $json = file_get_contents('php://input');
+    $data = json_decode($json, true);
 
-    //Ruta al archivo SQL
-    $sqlFile = "../database/musiclab_db.sql";
-    
-    if (!file_exists($sqlFile)) {
-        outputJson(["error" => "Archivo SQL no encontrado"], 500);
-    }
-
-    //Leer y limpiar el contenido del archivo
-    $sqlContent = file_get_contents($sqlFile);
-    
-    // mysqli_multi_query permite ejecutar múltiples sentencias SQL a la vez
-    if (mysqli_multi_query($link, $sqlContent)) {
-        // Debemos "vaciar" los resultados de multi_query para que la conexión quede libre
-        do {
-            if ($result = mysqli_store_result($link)) {
-                mysqli_free_result($result);
-            }
-        } while (mysqli_next_result($link));
-
-        outputJson([
-            "status" => "success", 
-            "message" => "Base de datos restaurada correctamente al estado inicial."
-        ]);
+    // Verificamos que las credenciales coincidan con el "owner"
+    if ($data['email'] === 'owner@gmail.com' && $data['password'] === 'admin123') {
+        
+        // Aquí va tu lógica para leer el archivo .sql y ejecutarlo
+        $sql = file_get_contents('../database/musiclab_db.sql');
+        
+        // Ejecución de múltiples consultas (multi_query) para restaurar todo
+        if (mysqli_multi_query($link, $sql)) {
+            outputJson(["status" => "success", "message" => "Sistema restaurado correctamente"]);
+        } else {
+            outputError(500); // Error interno al ejecutar SQL
+        }
     } else {
-        outputJson(["error" => mysqli_error($link)], 500);
+        // Esto es lo que estás viendo en Postman ahora mismo
+        header('HTTP/1.1 401 Unauthorized');
+        echo "Pass the correct auth credentials";
+        exit;
     }
 }
 
@@ -393,6 +384,49 @@ function postLogin()
     }
 }
 
+function postPosts() {
+    global $link;
+
+    // Validar que la materia mínima esté presente para evitar Warnings
+    if (!isset($_POST['user_id']) || !isset($_POST['title'])) {
+        outputError(400); // Bad Request
+    }
+    
+    // Capturamos los datos enviados por FormData
+    $userId = mysqli_real_escape_string($link, $_POST['user_id']);
+    $title = mysqli_real_escape_string($link, $_POST['title']);
+    $description = mysqli_real_escape_string($link, $_POST['description']);
+    $fileType = mysqli_real_escape_string($link, $_POST['file_type']);
+    
+    $fileUrl = 'none'; // Valor por defecto si hay libertad de no subir archivo
+
+    // Si el usuario decidió subir materia física...
+    if (isset($_FILES['file']) && $_FILES['file']['error'] === UPLOAD_ERR_OK) {
+        $nombreArchivo = $_FILES['file']['name'];
+        $rutaDestino = "../uploads/" . $nombreArchivo;
+        
+        if (move_uploaded_file($_FILES['file']['tmp_name'], $rutaDestino)) {
+            $fileUrl = $nombreArchivo;
+        } else {
+        // Si falla, el servidor nos dirá por qué en el JSON de respuesta
+        outputJson([
+            "status" => "error", 
+            "message" => "No se pudo mover el archivo. Verifica permisos en la carpeta uploads."
+        ]);
+        return;
+    }
+    }
+
+    $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type) 
+            VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType')";
+
+    if (mysqli_query($link, $sql)) {
+        outputJson(["status" => "success", "message" => "Publicación realizada"]);
+    } else {
+        outputError(500);
+    }
+}
+
 function patchUsers($id)
 {
     global $link;
@@ -506,13 +540,11 @@ function deleteUsers($id)
 
     $rol_a_borrar = (int)$usuario_a_borrar['role'];
 
-    // Solo el Owner (2) o Admin (1) pueden borrar, y SOLO pueden borrar Artistas (0)
+    // Si NO es un usuario autorizado (Admin/Owner borrando a un Artista), denegar.
     $es_autorizado = ($rol_editor >= 1 && $rol_a_borrar === 0);
-    
-    // El Owner (2) también puede borrarse a sí mismo o a Admins si lo deseas, 
-    // pero según tu esquema:
-    if (!$es_autorizado) {
-        outputError(401); // No autorizado
+
+    if (!$es_autorizado) { 
+        outputError(401); // No autorizado si la condición NO se cumple
     }
 
     // Ejecución del DELETE
@@ -530,70 +562,58 @@ function deleteUsers($id)
 
 // Cualquiera puedo eliminar sus propios registros pero los admin y el Owner pueden borrar las publicaciones de los usuarios
 // Los admin no pueden tocar al Owner
+
 function deletePosts($id)
 {
     global $link;
     $publicacion_a_eliminar = (int)$id;
 
-    // el que esta logueado
+    // 1. Validar identidad y obtener datos del editor
     $editor = validarToken();
     $id_editor = (int)$editor['id'];
     $editor_role = (int)$editor['role'];
 
-    // Comprobar si existe es publicacion...
-    $sql_busqueda = "SELECT
-                        *
-                    FROM
-                        posts
-                    WHERE
-                        id = $publicacion_a_eliminar";
-    
+    // 2. Buscar la publicacion ANTES de borrar el registro
+    $sql_busqueda = "SELECT user_id, file_url FROM posts WHERE id = $publicacion_a_eliminar";
     $res = mysqli_query($link, $sql_busqueda);
-    $existe = mysqli_fetch_assoc($res);
+    $post = mysqli_fetch_assoc($res);
 
-    // datos del autor de la publicacion
-    $usuario_publicacion = (int)['user_id'];
-    $usuario_publicacion_role = (int)['role'];
-
-    if(!$existe)
-    {
-        outputError(404); // not found
+    if (!$post) {
+        outputError(404); // La publicación no existe
     }
 
-    $sql_delete = "DELETE FROM
-                posts
-            WHERE
-                id = $publicacion_a_eliminar";
+    $id_autor_post = (int)$post['user_id'];
+    $nombre_archivo = $post['file_url'];// obtenemos el nombre del archivo
 
+    // 3. Verificar permisos de borrado
     $puede_borrar = false;
+    if ($id_editor === $id_autor_post || $editor_role >= 1) {
+        $puede_borrar = true;
+    }
 
-    // Comprobaciones...
-    // si el editor es el mismo...puede hacerlo
-    if($id_editor === $usuario_publicacion)
-    {
-        $puede_borrar = true;
+    if (!$puede_borrar) {
+        outputError(401); 
     }
-    // si es el Owner...puede borrar la que quiera
-    else if($rol_editor === 2)
-    {
-        $puede_borrar = true;
-    }
-    // los admin pueden eliminar las publicaciones de los usuarios
-    else if ($rol_editor === 1 && $usuario_publicacion_role === 0) {
-        $puede_borrar = true;
-    }
-    // ejecutar la peticion sql...
-    if($puede_borrar)
-    {
-        if (mysqli_query($link, $sql_delete)) {
-            outputJson(["status" => "success", "message" => "Se eliminó la publicacion correctamente"]);
-        } else {
-            outputError(500);
+
+    // 4. Ejecutar el DELETE en la base de datos
+    $sql_delete = "DELETE FROM posts WHERE id = $publicacion_a_eliminar";
+
+    if (mysqli_query($link, $sql_delete)) {
+        
+        // 5. ELIMINACIÓN DEL ARCHIVO FÍSICO
+        // Solo intentamos borrar si no es 'none'
+        if ($nombre_archivo !== 'none') {
+            $ruta_completa = "../uploads/" . $nombre_archivo;
+            
+            // Verificamos si el archivo existe antes de intentar borrarlo
+            if (file_exists($ruta_completa)) {
+                unlink($ruta_completa); // Borra el archivo del disco
+            }
         }
-    }
-    else
-    {
-        outputError(401); // no tiene permisos para borrar esta publicacion...
+
+        outputJson(["status" => "success", "message" => "Publicación y archivo eliminados"]);
+    } else {
+        outputError(500);
     }
 }
 
