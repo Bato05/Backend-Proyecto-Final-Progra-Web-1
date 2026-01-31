@@ -244,6 +244,48 @@ function getPosts()
     outputJson($ret);
 }
 
+// $id => del artista
+function getPostsConParametros($id)
+{
+    global $link;
+
+    $id = (int)$id;
+    
+    //traer todos las publicaciones del artista
+    $sql = "SELECT p.id, 
+                   p.title, 
+                   p.description, 
+                   p.file_url, 
+                   p.file_type, 
+                   p.created_at,
+                   p.user_id,
+                   CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+            FROM 
+                posts p
+            INNER JOIN 
+                users u ON p.user_id = u.id
+            WHERE 
+            	p.user_id = $id
+            ORDER BY 
+                p.created_at 
+            DESC";
+
+    $result = mysqli_query($link, $sql);
+    
+    if ($result === false) {
+        outputError(500);
+    }
+
+    $ret = [];
+    while ($fila = mysqli_fetch_assoc($result)) {
+        settype($fila['id'], 'integer');
+        $ret[] = $fila;
+    }
+
+    mysqli_free_result($result);
+    outputJson($ret);
+}
+
 // postUsers --> crear nuevos usario que no estan registrados en la BD
 function postUsers() 
 {
@@ -411,7 +453,7 @@ function postPosts() {
         // Si falla, el servidor nos dirá por qué en el JSON de respuesta
         outputJson([
             "status" => "error", 
-            "message" => "No se pudo mover el archivo. Verifica permisos en la carpeta uploads."
+            "message" => "No se pudo mover el archivo."
         ]);
         return;
     }
@@ -511,6 +553,90 @@ function patchUsers($id)
         outputError(500);
     }
 }
+
+function patchPosts($id)
+{
+    global $link;
+    
+    // 1. SEGURIDAD: Validamos quién eres
+    $editor = validarToken();
+    $id_editor = (int)$editor['id'];
+    $rol_editor = (int)$editor['role'];
+    $id_post = (int)$id;
+
+    // 2. RECUPERACIÓN: Traemos la "materia" original de la BD
+    $sql = "SELECT * FROM posts WHERE id = $id_post";
+    $res = mysqli_query($link, $sql);
+    $original = mysqli_fetch_assoc($res);
+
+    if (!$original) {
+        outputError(404); // Si no existe el post, no hay nada que editar
+    }
+
+    // 3. PERMISOS: Verificamos si puedes tocar esta obra
+    $id_autor = (int)$original['user_id'];
+    $puedeEditar = ($id_editor === $id_autor || $rol_editor === 2);
+
+    if (!$puedeEditar) {
+        outputError(401);
+    }
+
+    // 4. CAPTURA: Leemos el JSON que envías desde Postman
+    $input = file_get_contents("php://input");
+    $data = json_decode($input, true);
+
+    if (!$data) {
+        outputError(400); // Si el JSON está mal formado
+    }
+
+    // 5. SANITIZACIÓN: Si el usuario no envía un campo, mantenemos el original
+    $title = isset($data['title']) ? mysqli_real_escape_string($link, $data['title']) : $original['title'];
+    
+    // CORRECCIÓN: Tu tabla usa 'description', no 'bio'
+    $description = isset($data['description']) ? mysqli_real_escape_string($link, $data['description']) : $original['description'];
+    
+    $file_type = isset($data['file_type']) ? mysqli_real_escape_string($link, $data['file_type']) : $original['file_type'];
+    $file_url = $original['file_url']; // Por defecto, mantenemos el archivo actual
+
+    if (isset($data['file_data']) && isset($data['file_url'])) {
+        
+        // A. Eliminamos el archivo físico anterior del disco
+        if ($original['file_url'] !== 'none') {
+            $ruta_vieja = "../uploads/" . $original['file_url'];
+            if (file_exists($ruta_vieja)) {
+                unlink($ruta_vieja);
+            }
+        }
+
+        // B. Reconstruimos el binario desde el texto Base64
+        $binario = base64_decode($data['file_data']);
+
+        if ($binario !== false) {
+            $nombre_nuevo = basename($data['file_url']);
+            $ruta_nueva = "../uploads/" . $nombre_nuevo;
+
+            // C. Materializamos el archivo en la carpeta uploads
+            if (file_put_contents($ruta_nueva, $binario)) {
+                $file_url = $nombre_nuevo; // Actualizamos para la BD
+            }
+        }
+    }
+
+    $sql_update = "UPDATE posts SET 
+                    title = '$title', 
+                    description = '$description', 
+                    file_type = '$file_type', 
+                    file_url = '$file_url' 
+                  WHERE id = $id_post";
+
+    if (mysqli_query($link, $sql_update)) {
+        outputJson(["status" => "success", "message" => "Publicación actualizada"]);
+    } else {
+        outputError(500);
+    }
+}
+
+
 
 function deleteUsers($id) 
 {
