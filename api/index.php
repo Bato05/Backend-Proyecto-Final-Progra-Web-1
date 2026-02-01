@@ -214,19 +214,20 @@ function getPosts()
     
     //traer el nombre del artista junto con el post
     $sql = "SELECT p.id, 
-                   p.title, 
-                   p.description, 
-                   p.file_url, 
-                   p.file_type, 
-                   p.created_at,
-                   CONCAT(u.first_name, ' ', u.last_name) as artist_name 
-            FROM 
-                posts p
-            INNER JOIN 
-                users u ON p.user_id = u.id
-            ORDER BY 
-                p.created_at 
-            DESC";
+               p.title, 
+               p.description, 
+               p.file_url, 
+               p.file_type, 
+               p.created_at,
+               u.profile_img_url,
+               CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+        FROM 
+            posts p
+        INNER JOIN 
+            users u ON p.user_id = u.id
+        ORDER BY 
+            p.created_at 
+        DESC";
 
     $result = mysqli_query($link, $sql);
     
@@ -259,6 +260,7 @@ function getPostsConParametros($id)
                    p.file_type, 
                    p.created_at,
                    p.user_id,
+                   u.profile_img_url,
                    CONCAT(u.first_name, ' ', u.last_name) as artist_name 
             FROM 
                 posts p
@@ -429,43 +431,40 @@ function postLogin()
 function postPosts() {
     global $link;
 
-    // Validar que la materia mínima esté presente para evitar Warnings
     if (!isset($_POST['user_id']) || !isset($_POST['title'])) {
-        outputError(400); // Bad Request
+        outputError(400);
     }
     
-    // Capturamos los datos enviados por FormData
     $userId = mysqli_real_escape_string($link, $_POST['user_id']);
     $title = mysqli_real_escape_string($link, $_POST['title']);
     $description = mysqli_real_escape_string($link, $_POST['description']);
     $fileType = mysqli_real_escape_string($link, $_POST['file_type']);
     
-    $fileUrl = 'none'; // Valor por defecto si hay libertad de no subir archivo
+    $fileUrl = 'none'; // Valor inicial
 
-    // Si el usuario decidió subir materia física...
-    if (isset($_FILES['file']) && $_FILES['file']['error'] === UPLOAD_ERR_OK) {
-        $nombreArchivo = $_FILES['file']['name'];
-        $rutaDestino = "../uploads/" . $nombreArchivo;
-        
-        if (move_uploaded_file($_FILES['file']['tmp_name'], $rutaDestino)) {
-            $fileUrl = $nombreArchivo;
+        if ($_FILES['file']['error'] === UPLOAD_ERR_OK) {
+                $nombreArchivo = basename($_FILES['file']['name']);
+                $rutaDestino = "../uploads/" . $nombreArchivo;
+                
+                // 2. Intentamos moverlo
+                if (move_uploaded_file($_FILES['file']['tmp_name'], $rutaDestino)) {
+                    $fileUrl = $nombreArchivo; // <--- AQUÍ OCURRE EL CAMBIO
+                    $debug['movimiento'] = 'EXITOSO';
+                }
+
+        // Insertar en BD
+        $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type) 
+                VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType')";
+
+        if (mysqli_query($link, $sql)) {
+            // Devolvemos el reporte completo en el JSON
+            outputJson([
+                "status" => "success", 
+                "message" => "Publicación procesada"
+            ]);
         } else {
-        // Si falla, el servidor nos dirá por qué en el JSON de respuesta
-        outputJson([
-            "status" => "error", 
-            "message" => "No se pudo mover el archivo."
-        ]);
-        return;
-    }
-    }
-
-    $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type) 
-            VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType')";
-
-    if (mysqli_query($link, $sql)) {
-        outputJson(["status" => "success", "message" => "Publicación realizada"]);
-    } else {
-        outputError(500);
+            outputError(500);
+        }
     }
 }
 
@@ -554,83 +553,61 @@ function patchUsers($id)
     }
 }
 
+// phpMusicLab/api/index.php
+
 function patchPosts($id)
 {
     global $link;
-    
-    // 1. SEGURIDAD: Validamos quién eres
     $editor = validarToken();
     $id_editor = (int)$editor['id'];
     $rol_editor = (int)$editor['role'];
     $id_post = (int)$id;
 
-    // 2. RECUPERACIÓN: Traemos la "materia" original de la BD
     $sql = "SELECT * FROM posts WHERE id = $id_post";
     $res = mysqli_query($link, $sql);
     $original = mysqli_fetch_assoc($res);
 
-    if (!$original) {
-        outputError(404); // Si no existe el post, no hay nada que editar
-    }
+    if (!$original) { outputError(404); }
 
-    // 3. PERMISOS: Verificamos si puedes tocar esta obra
+    // Solo el autor o el Owner (rol 2) pueden editar
     $id_autor = (int)$original['user_id'];
     $puedeEditar = ($id_editor === $id_autor || $rol_editor === 2);
+    if (!$puedeEditar) { outputError(401); }
 
-    if (!$puedeEditar) {
-        outputError(401);
-    }
-
-    // 4. CAPTURA: Leemos el JSON que envías desde Postman
     $input = file_get_contents("php://input");
     $data = json_decode($input, true);
+    if (!$data) { outputError(400); }
 
-    if (!$data) {
-        outputError(400); // Si el JSON está mal formado
-    }
-
-    // 5. SANITIZACIÓN: Si el usuario no envía un campo, mantenemos el original
+    // Sanitización: Mantiene el valor original si no se envía en el JSON
     $title = isset($data['title']) ? mysqli_real_escape_string($link, $data['title']) : $original['title'];
-    
-    // CORRECCIÓN: Tu tabla usa 'description', no 'bio'
     $description = isset($data['description']) ? mysqli_real_escape_string($link, $data['description']) : $original['description'];
-    
     $file_type = isset($data['file_type']) ? mysqli_real_escape_string($link, $data['file_type']) : $original['file_type'];
-    $file_url = $original['file_url']; // Por defecto, mantenemos el archivo actual
+    $file_url = $original['file_url']; 
 
+    // Procesamiento de archivo Base64 (Camino 1)
     if (isset($data['file_data']) && isset($data['file_url'])) {
         
-        // A. Eliminamos el archivo físico anterior del disco
-        if ($original['file_url'] !== 'none') {
+        // PROTECCIÓN: Solo borramos si NO es la imagen del sistema
+        if ($original['file_url'] !== 'none' && $original['file_url'] !== 'default_profile.png') {
             $ruta_vieja = "../uploads/" . $original['file_url'];
-            if (file_exists($ruta_vieja)) {
+            if (file_exists($ruta_vieja)) { 
                 unlink($ruta_vieja);
             }
         }
 
-        // B. Reconstruimos el binario desde el texto Base64
         $binario = base64_decode($data['file_data']);
+        $nombre_nuevo = basename($data['file_url']);
+        $ruta_nueva = "../uploads/" . $nombre_nuevo;
 
-        if ($binario !== false) {
-            $nombre_nuevo = basename($data['file_url']);
-            $ruta_nueva = "../uploads/" . $nombre_nuevo;
-
-            // C. Materializamos el archivo en la carpeta uploads
-            if (file_put_contents($ruta_nueva, $binario)) {
-                $file_url = $nombre_nuevo; // Actualizamos para la BD
-            }
+        if (file_put_contents($ruta_nueva, $binario)) {
+            $file_url = $nombre_nuevo;
         }
     }
 
-    $sql_update = "UPDATE posts SET 
-                    title = '$title', 
-                    description = '$description', 
-                    file_type = '$file_type', 
-                    file_url = '$file_url' 
-                  WHERE id = $id_post";
+    $sql_update = "UPDATE posts SET title = '$title', description = '$description', file_type = '$file_type', file_url = '$file_url' WHERE id = $id_post";
 
     if (mysqli_query($link, $sql_update)) {
-        outputJson(["status" => "success", "message" => "Publicación actualizada"]);
+        outputJson(["status" => "success", "message" => "Publicación actualizada correctamente"]);
     } else {
         outputError(500);
     }
@@ -694,50 +671,38 @@ function deletePosts($id)
     global $link;
     $publicacion_a_eliminar = (int)$id;
 
-    // 1. Validar identidad y obtener datos del editor
     $editor = validarToken();
     $id_editor = (int)$editor['id'];
     $editor_role = (int)$editor['role'];
 
-    // 2. Buscar la publicacion ANTES de borrar el registro
     $sql_busqueda = "SELECT user_id, file_url FROM posts WHERE id = $publicacion_a_eliminar";
     $res = mysqli_query($link, $sql_busqueda);
     $post = mysqli_fetch_assoc($res);
 
     if (!$post) {
-        outputError(404); // La publicación no existe
+        outputError(404); 
     }
 
-    $id_autor_post = (int)$post['user_id'];
-    $nombre_archivo = $post['file_url'];// obtenemos el nombre del archivo
-
-    // 3. Verificar permisos de borrado
-    $puede_borrar = false;
-    if ($id_editor === $id_autor_post || $editor_role >= 1) {
-        $puede_borrar = true;
+    // Solo el dueño o moderadores pueden borrar
+    if ($id_editor !== (int)$post['user_id'] && $editor_role < 1) {
+        outputError(401);
     }
 
-    if (!$puede_borrar) {
-        outputError(401); 
-    }
-
-    // 4. Ejecutar el DELETE en la base de datos
+    $nombre_archivo = $post['file_url'];
     $sql_delete = "DELETE FROM posts WHERE id = $publicacion_a_eliminar";
 
     if (mysqli_query($link, $sql_delete)) {
         
-        // 5. ELIMINACIÓN DEL ARCHIVO FÍSICO
-        // Solo intentamos borrar si no es 'none'
-        if ($nombre_archivo !== 'none') {
+        // PROTECCIÓN: No destruimos el recurso base del sistema
+        if ($nombre_archivo !== 'none' && $nombre_archivo !== 'default_profile.png') {
             $ruta_completa = "../uploads/" . $nombre_archivo;
             
-            // Verificamos si el archivo existe antes de intentar borrarlo
             if (file_exists($ruta_completa)) {
-                unlink($ruta_completa); // Borra el archivo del disco
+                unlink($ruta_completa);
             }
         }
 
-        outputJson(["status" => "success", "message" => "Publicación y archivo eliminados"]);
+        outputJson(["status" => "success", "message" => "Publicación y archivo eliminados correctamente"]);
     } else {
         outputError(500);
     }
