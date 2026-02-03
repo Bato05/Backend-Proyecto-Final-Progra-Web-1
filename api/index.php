@@ -1,10 +1,6 @@
 <?php
 
-/* 
-como Angular corre en el puerto 4200 con su servidor interno y XAMPP corre en el 80 
-el navegador bloqueará la conexión por seguridad.
-para su correcta vinculacion se requiere usar...
-*/
+// 1. CONFIGURACIÓN DE CORS Y HEADERS
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Authorization, Content-Type");
 header("Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS");
@@ -14,540 +10,327 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     die;
 }
 
-// Para obtener la variable $link de la conexion a la BD
+// 2. CONEXIÓN Y CONFIGURACIÓN
 require_once "../config/config.php";
 
-// Si no se envió "acción" de protocolo HTTP
 if (!isset($_GET['accion'])) {
     outputError(400);
 }
 
-$metodo = strtolower($_SERVER['REQUEST_METHOD']); // obtiene el metodo llamado
-$accion = explode('/', strtolower($_GET['accion'])); //la accion que se toma
-$funcionNombre = $metodo . ucfirst($accion[0]); // funcion contruida con el metodo + la accion
-$parametros = array_slice($accion, 1); // parametros de la funcion
+// 3. ENRUTAMIENTO BÁSICO
+$metodo = strtolower($_SERVER['REQUEST_METHOD']);
+$accion = explode('/', strtolower($_GET['accion']));
+$funcionNombre = $metodo . ucfirst($accion[0]);
+$parametros = array_slice($accion, 1);
 
-// Si hay parametros y es GET 
 if (count($parametros) > 0 && $metodo == 'get') {
     $funcionNombre = $funcionNombre.'ConParametros';
 }
 
-//Si existe la funcion...llamarla! si no entra al else
 if (function_exists($funcionNombre)) {
     call_user_func_array ($funcionNombre, $parametros);
 } else {
     outputError(400);
 }
 
-// Funcion centralizada de manejo de errores
-function outputError($codigo = 500)
-{
+// =================================================================================
+//                               FUNCIONES AUXILIARES
+// =================================================================================
+
+function outputError($codigo = 500) {
     switch ($codigo) {
-        case 401:
-            header($_SERVER["SERVER_PROTOCOL"] . " 401 Unauthorized", true, 401); // Acceso denegado por contrasenia incorrecta
-            die;
-        case 400:
-            header($_SERVER["SERVER_PROTOCOL"] . " 400 Bad request", true, 400); // Error en el protocolo HTTP
-            die;
-        case 404:
-            header($_SERVER["SERVER_PROTOCOL"] . " 404 Not Found", true, 404); // Recurso no encontrado
-            die;
-        default:
-            header($_SERVER["SERVER_PROTOCOL"] . " 500 Internal Server Error", true, 500); // Error en el servidor
-            die;
-            break;
+        case 401: header($_SERVER["SERVER_PROTOCOL"] . " 401 Unauthorized", true, 401); die;
+        case 400: header($_SERVER["SERVER_PROTOCOL"] . " 400 Bad request", true, 400); die;
+        case 404: header($_SERVER["SERVER_PROTOCOL"] . " 404 Not Found", true, 404); die;
+        default:  header($_SERVER["SERVER_PROTOCOL"] . " 500 Internal Server Error", true, 500); die;
     }
 }
 
-// Funcion para los estatus 200 OK y los 201 Created
-function outputJson($data, $codigo = 200)
-{
+function outputJson($data, $codigo = 200) {
     header('', true, $codigo);
     header('Content-type: application/json');
     print json_encode($data);
     die;
 }
 
-/*************************** API *********************************/
-
-/**
- * POST /restore
- * Restaura la base de datos al estado original definido en el script SQL.
- */
-function postRestore() 
-{
-    global $link;
-    
-    // Leemos el JSON que envías desde Postman
-    $json = file_get_contents('php://input');
-    $data = json_decode($json, true);
-
-    // Verificamos que las credenciales coincidan con el "owner"
-    if ($data['email'] === 'owner@gmail.com' && $data['password'] === 'admin123') {
-        
-        // Aquí va tu lógica para leer el archivo .sql y ejecutarlo
-        $sql = file_get_contents('../database/musiclab_db.sql');
-        
-        // Ejecución de múltiples consultas (multi_query) para restaurar todo
-        if (mysqli_multi_query($link, $sql)) {
-            outputJson(["status" => "success", "message" => "Sistema restaurado correctamente"]);
-        } else {
-            outputError(500); // Error interno al ejecutar SQL
-        }
-    } else {
-        // Esto es lo que estás viendo en Postman ahora mismo
-        header('HTTP/1.1 401 Unauthorized');
-        echo "Pass the correct auth credentials";
-        exit;
-    }
-}
-
-// Obtener todos los usuarios
-/*
- GET      users     
- [
-    {
-        "id": 1,  // int  
-        "first_name": "Bautista",  // string
-        "last_name": "Rodriguez", // string
-        "email": "Owner@gmail.com", // string
-        "Password": "123456", // int,
-        "role": "0 = Owner", // int
-        "Artists_type": ,
-        Bio: '' , // string
-        profike_img_url: '' , // string
-        status: '' , // string
-        created_at: '' // timestamp
-    },
-    {...}
-]
-*/
-
-function getUsers() 
-{
-    global $link;
-    $sql = "SELECT * FROM users";
-    $result = mysqli_query($link, $sql);
-    
-    if ($result===false) {
-        outputError(500);
-    }
-
-    $ret = [];
-    while ($fila = mysqli_fetch_assoc($result)) {
-        settype($fila['id'], 'integer');
-        settype($fila['role'], 'integer');
-        $ret[] = $fila;
-    }
-
-    mysqli_free_result($result);
-    mysqli_close($link);
-    outputJson($ret);
-}
-
-// Obtener un usuario específico por su ID
-/*
- GET      users/{id}     
- {
-    "id": 1,
-    "first_name": "Bautista",
-    "last_name": "Rodriguez",
-    "email": "owner@gmail.com",
-    "role": 2,
-    "artist_type": "Developer",
-    "bio": "Creador de MusicLab.",
-    "profile_img_url": "default_profile.png",
-    "status": "active",
-    "created_at": "2026-01-21 13:57:06"
- }
-*/
-function getUsersConParametros($id) 
-{
-    global $link;
-
-    // Sanitización del parámetro para evitar inyecciones SQL
-    $id = mysqli_real_escape_string($link, $id);
-
-    // Consulta para obtener solo el usuario solicitado
-    $sql = "SELECT id, first_name, last_name, password, email, role, artist_type, bio, profile_img_url, status, created_at 
-            FROM users 
-            WHERE id = $id";
-
-    $result = mysqli_query($link, $sql);
-    
-    if ($result === false) {
-        outputError(500); // Error interno del servidor
-    }
-
-    $usuario = mysqli_fetch_assoc($result);
-
-    if ($usuario) {
-        // Ajuste de tipos para que coincidan con tu estándar de la API
-        settype($usuario['id'], 'integer');
-        settype($usuario['role'], 'integer');
-        
-        outputJson($usuario); // Retorna el objeto del usuario encontrado
-    } else {
-        outputError(404); // Recurso no encontrado si el ID no existe
-    }
-}
-
-
-// Obtener todas las publicaciones (muro de música)
-/*
- GET      posts     
- [
-    {
-        "id": 1,
-        "title": "Nueva Demo Rock",
-        "description": "Un adelanto de mi próximo EP.",
-        "file_url": "audio_demo_1.mp3",
-        "file_type": "audio",
-        "artist_name": "Julian Casablancas"
-    },
-    {...}
- ]
-*/
-function getPosts()
-{
-    global $link;
-    
-    //traer el nombre del artista junto con el post
-    $sql = "SELECT p.id, 
-               p.title, 
-               p.description, 
-               p.file_url, 
-               p.file_type, 
-               p.created_at,
-               u.profile_img_url,
-               CONCAT(u.first_name, ' ', u.last_name) as artist_name 
-        FROM 
-            posts p
-        INNER JOIN 
-            users u ON p.user_id = u.id
-        ORDER BY 
-            p.created_at 
-        DESC";
-
-    $result = mysqli_query($link, $sql);
-    
-    if ($result === false) {
-        outputError(500);
-    }
-
-    $ret = [];
-    while ($fila = mysqli_fetch_assoc($result)) {
-        settype($fila['id'], 'integer');
-        $ret[] = $fila;
-    }
-
-    mysqli_free_result($result);
-    outputJson($ret);
-}
-
-// $id => del artista
-function getPostsConParametros($id = null) 
-{
-    global $link;
-    $id_limpio = (int)$id; // Forzamos a entero para evitar errores de call_user_func_array
-    
-    if ($id_limpio <= 0) {
-        outputJson([]); 
-        die;
-    }
-
-    $sql = "SELECT p.*, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
-            FROM posts p
-            INNER JOIN users u ON p.user_id = u.id
-            WHERE p.user_id = $id_limpio
-            ORDER BY p.created_at DESC";
-
-    $result = mysqli_query($link, $sql);
-    
-    if ($result === false) {
-        outputError(500);
-    }
-
-    $ret = [];
-    while ($fila = mysqli_fetch_assoc($result)) {
-        settype($fila['id'], 'integer');
-        settype($fila['user_id'], 'integer');
-        $ret[] = $fila;
-    }
-
-    mysqli_free_result($result);
-    outputJson($ret); 
-}
-
-// postUsers --> crear nuevos usario que no estan registrados en la BD
-function postUsers() 
-{
-    global $link;
-    $data = json_decode(file_get_contents('php://input'), true);
-
-    // Campos estrictamente necesarios según tu formulario y tabla
-    if (empty($data['first_name']) || empty($data['last_name']) || 
-        empty($data['email']) || empty($data['password']) || empty($data['artist_type'])) {
-        outputError(400); // Bad Request si falta algún dato obligatorio
-    }
-
-    // Sanitización
-    $first_name = mysqli_real_escape_string($link, $data['first_name']);
-    $last_name = mysqli_real_escape_string($link, $data['last_name']);
-    $email = mysqli_real_escape_string($link, $data['email']);
-    // Convertir el array de instrumentos de Angular a un string para la BD
-    $artist_type_raw = is_array($data['artist_type']) ? implode(', ', $data['artist_type']) : $data['artist_type'];
-    $artist_type = mysqli_real_escape_string($link, $artist_type_raw);
-    $bio = !empty($data['bio']) ? mysqli_real_escape_string($link, $data['bio']) : '';
-    
-    // El password a texto plano
-    $passwordHash = password_hash($data['password'], PASSWORD_DEFAULT);
-
-    // Inserción (el rol es 0 y la imagen es default por estructura de tabla)
-    $sql = "INSERT INTO users (first_name, last_name, email, password, artist_type, bio, profile_img_url, role) 
-            VALUES ('$first_name', '$last_name', '$email', '$passwordHash', '$artist_type', '$bio', 'default_profile.png', 0)";
-
-    if (mysqli_query($link, $sql)) {
-        $userId = mysqli_insert_id($link);
-        
-        $token = generarJWT($userId, $email, 0); 
-
-        outputJson([
-            "status" => "success",
-            "token" => $token,
-            "user" => [
-                "id" => $userId,
-                "first_name" => $first_name,
-                "role" => 0
-            ]
-        ], 201);
-    } else {
-        outputError(500);
-    }
-}
-
 function generarJWT($id, $email, $role) {
-    $key = "Tu_Clave_Secreta_MusicLab_2026"; // llave maestra
-
-    // 1. Header (Tipo de token y algoritmo)
+    $key = "Tu_Clave_Secreta_MusicLab_2026";
     $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
     $headerBase64 = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($header));
-
-    // 2. Payload (Datos del usuario)
     $payload = json_encode([
         'iat' => time(),
         'exp' => time() + 3600,
         'data' => ['id' => $id, 'email' => $email, 'role' => $role]
     ]);
     $payloadBase64 = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($payload));
-
-    // 3. Signature (Firma de seguridad)
     $signature = hash_hmac('sha256', "$headerBase64.$payloadBase64", $key, true);
     $signatureBase64 = str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($signature));
-
     return "$headerBase64.$payloadBase64.$signatureBase64";
 }
 
-function validarToken() 
-{
+function validarToken() {
     $headers = apache_request_headers(); 
-    // Buscamos el header sin importar si empieza con mayúscula o minúscula
     $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? null;
-
-    if (!$authHeader) {
-        outputError(401); 
-    }
-
-    // Extraemos el token quitando "Bearer "
+    if (!$authHeader) { outputError(401); }
     $token = str_ireplace('Bearer ', '', $authHeader);
     $partes = explode('.', $token);
-
-    if (count($partes) !== 3) {
-        outputError(401); 
-    }
-
-    // Decodificamos la parte central (payload)
+    if (count($partes) !== 3) { outputError(401); }
     $payloadBase64 = str_replace(['-', '_'], ['+', '/'], $partes[1]);
     $payload = json_decode(base64_decode($payloadBase64), true);
-
-    // En local, vamos a ser menos estrictos: si tiene datos, lo dejamos pasar
-    if (isset($payload['data'])) {
-        return $payload['data']; 
-    }
-
+    if (isset($payload['data'])) { return $payload['data']; }
     outputError(401);
 }
 
-// POST login --> inicio de sesion una vez registrado
-function postLogin() 
-{
-    global $link;
-    $json_raw = file_get_contents('php://input');
-    $data = json_decode($json_raw, true);
-
-    if (!isset($data['email']) || !isset($data['password'])) {
-        outputError(401); 
+/**
+ * Función auxiliar para decodificar y guardar archivos Base64
+ * Recibe: string base64 y nombre del archivo destino
+ * Retorna: true si guardó, false si falló
+ */
+function guardarBase64($base64_string, $nombre_archivo) {
+    // Si viene con el prefijo "data:image/png;base64,", lo quitamos
+    if (strpos($base64_string, ',') !== false) {
+        $data = explode(',', $base64_string);
+        $base64_string = $data[1];
     }
+    
+    $data = base64_decode($base64_string);
+    if ($data === false) return false;
+    
+    $ruta = "../uploads/" . $nombre_archivo;
+    return file_put_contents($ruta, $data);
+}
 
-    // sanitizas el email
+// =================================================================================
+//                                      API
+// =================================================================================
+
+// GET Users
+function getUsers() {
+    global $link;
+    $sql = "SELECT * FROM users";
+    $result = mysqli_query($link, $sql);
+    if ($result===false) { outputError(500); }
+    $ret = [];
+    while ($fila = mysqli_fetch_assoc($result)) {
+        settype($fila['id'], 'integer');
+        settype($fila['role'], 'integer');
+        $ret[] = $fila;
+    }
+    outputJson($ret);
+}
+
+// GET User by ID
+function getUsersConParametros($id) {
+    global $link;
+    $id = mysqli_real_escape_string($link, $id);
+    $sql = "SELECT id, first_name, last_name, password, email, role, artist_type, bio, profile_img_url, status, created_at FROM users WHERE id = $id";
+    $result = mysqli_query($link, $sql);
+    if ($result === false) { outputError(500); }
+    $usuario = mysqli_fetch_assoc($result);
+    if ($usuario) {
+        settype($usuario['id'], 'integer');
+        settype($usuario['role'], 'integer');
+        outputJson($usuario);
+    } else {
+        outputError(404);
+    }
+}
+
+// GET Posts
+function getPosts() {
+    global $link;
+    $sql = "SELECT p.id, p.title, p.description, p.file_url, p.file_type, p.created_at, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+            FROM posts p INNER JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC";
+    $result = mysqli_query($link, $sql);
+    if ($result === false) { outputError(500); }
+    $ret = [];
+    while ($fila = mysqli_fetch_assoc($result)) {
+        settype($fila['id'], 'integer');
+        $ret[] = $fila;
+    }
+    outputJson($ret);
+}
+
+// GET User Posts
+function getPostsConParametros($id = null) {
+    global $link;
+    $id_limpio = (int)$id;
+    if ($id_limpio <= 0) { outputJson([]); die; }
+    $sql = "SELECT p.*, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+            FROM posts p INNER JOIN users u ON p.user_id = u.id WHERE p.user_id = $id_limpio ORDER BY p.created_at DESC";
+    $result = mysqli_query($link, $sql);
+    if ($result === false) { outputError(500); }
+    $ret = [];
+    while ($fila = mysqli_fetch_assoc($result)) {
+        settype($fila['id'], 'integer');
+        settype($fila['user_id'], 'integer');
+        $ret[] = $fila;
+    }
+    outputJson($ret); 
+}
+
+// POST Login
+function postLogin() {
+    global $link;
+    $data = json_decode(file_get_contents('php://input'), true);
+
+    if (!isset($data['email']) || !isset($data['password'])) { outputError(401); }
+    
     $email = mysqli_real_escape_string($link, $data['email']);
-
-    // 2. Buscar al usuario en la base de datos
-    $sql = "SELECT id, first_name, email, password, role FROM users 
-            WHERE email = '$email'";
-
+    $sql = "SELECT id, first_name, email, password, role, artist_type, bio, profile_img_url FROM users WHERE email = '$email'";
     $resultado = mysqli_query($link, $sql);
     $usuario = mysqli_fetch_assoc($resultado);
 
-    // 3. Validar con password_verify
     if ($usuario && password_verify($data['password'], $usuario['password'])) {
-        
-        // 4. Generar el JWT 
         $token = generarJWT($usuario['id'], $usuario['email'], $usuario['role']);
-
-        // 5. Enviar respuesta exitosa (sin la contraseña por seguridad)
         unset($usuario['password']);
-        outputJson([
-            "status" => "success",
-            "token" => $token,
-            "user" => $usuario
-        ], 200);
-
+        outputJson([ "status" => "success", "token" => $token, "user" => $usuario ], 200);
     } else {
-        // Si el usuario no existe o la clave es mal, error 401
         outputError(401);
     }
 }
 
-function postPosts() {
+// POST Users (Registro)
+function postUsers() {
     global $link;
+    $data = json_decode(file_get_contents('php://input'), true);
 
-    if (!isset($_POST['user_id']) || !isset($_POST['title'])) {
+    if (empty($data['first_name']) || empty($data['last_name']) || empty($data['email']) || empty($data['password']) || empty($data['artist_type'])) {
         outputError(400);
     }
+
+    $first_name = mysqli_real_escape_string($link, $data['first_name']);
+    $last_name = mysqli_real_escape_string($link, $data['last_name']);
+    $email = mysqli_real_escape_string($link, $data['email']);
+    $artist_type_raw = is_array($data['artist_type']) ? implode(', ', $data['artist_type']) : $data['artist_type'];
+    $artist_type = mysqli_real_escape_string($link, $artist_type_raw);
+    $bio = !empty($data['bio']) ? mysqli_real_escape_string($link, $data['bio']) : '';
     
-    $userId = mysqli_real_escape_string($link, $_POST['user_id']);
-    $title = mysqli_real_escape_string($link, $_POST['title']);
-    $description = mysqli_real_escape_string($link, $_POST['description']);
-    $fileType = mysqli_real_escape_string($link, $_POST['file_type']);
-    
-    $fileUrl = 'none'; // Valor inicial
+    $passwordHash = password_hash($data['password'], PASSWORD_DEFAULT);
 
-        if ($_FILES['file']['error'] === UPLOAD_ERR_OK) {
-                $nombreArchivo = basename($_FILES['file']['name']);
-                $rutaDestino = "../uploads/" . $nombreArchivo;
-                
-                // 2. Intentamos moverlo
-                if (move_uploaded_file($_FILES['file']['tmp_name'], $rutaDestino)) {
-                    $fileUrl = $nombreArchivo; // <--- AQUÍ OCURRE EL CAMBIO
-                    $debug['movimiento'] = 'EXITOSO';
-                }
+    // Se asume imagen default al registrar
+    $sql = "INSERT INTO users (first_name, last_name, email, password, artist_type, bio, profile_img_url, role) 
+            VALUES ('$first_name', '$last_name', '$email', '$passwordHash', '$artist_type', '$bio', 'default_profile.png', 0)";
 
-        // Insertar en BD
-        $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type) 
-                VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType')";
-
-        if (mysqli_query($link, $sql)) {
-            // Devolvemos el reporte completo en el JSON
-            outputJson([
-                "status" => "success", 
-                "message" => "Publicación procesada"
-            ]);
-        } else {
-            outputError(500);
-        }
-    }
-}
-
-function patchUsers($id)
-{
-    global $link;
-    
-    //Validamos el token y obtenemos quién hace la petición
-    $editor = validarToken();
-    $id_editor = (int) $editor['id'];
-    $rol_editor = (int) $editor['role'];
-    $id_usuario_modificar = (int) $id;
-
-    //obtener los datos del usuario a editar...
-    $sql = "SELECT 
-                *
-            FROM 
-                users 
-            WHERE 
-                id = $id_usuario_modificar";
-
-    $res = mysqli_query($link, $sql);
-    $original = mysqli_fetch_assoc($res);
-
-    if (!$original) {
-        outputError(404); // El usuario a editar no existe
-    }
-
-    $rol_destino = (int)$original['role'];// averiguamos el nivel de permisos/cuenta que posee el usuario a editar
-
-    $puedeEditar = false;
-
-    // Uno mismo siempre puede editarse
-    if ($id_editor == $id_usuario_modificar) {
-        $puedeEditar = true;
-    } 
-
-    //El Owner (rol 2) puede editar a cualquiera
-    elseif ($rol_editor == 2) {
-        $puedeEditar = true;
-    }
-
-    // Los Admin (rol 1) pueden editar artistas (rol 0)
-    // Pero NO pueden tocar al Owner (2) ni a otros Admins (1)
-    elseif ($rol_editor == 1 && $rol_destino == 0) {
-        $puedeEditar = true;
-    }
-
-    if (!$puedeEditar) {
-        outputError(401); // No tiene permisos para esta acción
-    }
-
-    $data = json_decode(file_get_contents('php://input'), true);
-    
-    // Sanitización
-    // Si el campo viene vacío o es igual al anterior, usamos el valor de $original
-    $first_name = !empty($data['first_name']) ? mysqli_real_escape_string($link, $data['first_name']) : $original['first_name'];
-    $last_name = !empty($data['last_name']) ? mysqli_real_escape_string($link, $data['last_name']) : $original['last_name'];
-    $email = !empty($data['email']) ? mysqli_real_escape_string($link, $data['email']) : $original['email'];
-    $artist_type= !empty($data['artist_type'])? mysqli_real_escape_string($link, $data['artist_type']) : $original['artist_type'];
-    $bio = isset($data['bio']) ? mysqli_real_escape_string($link, $data['bio']) : $original['bio'];
-    $profile_img_url = !empty($data['profile_img_url']) ? mysqli_real_escape_string($link, $data['profile_img_url']) : $original['profile_img_url'];
-
-    // Solo se cambia si se envía una nueva, sino queda el hash anterior
-    $password = !empty($data['password']) ? password_hash($data['password'], PASSWORD_DEFAULT) : $original['password'];
-
-    // Solo el Owner (rol 2) puede cambiar roles ajenos
-    $role = ($rol_editor == 2 && isset($data['role'])) ? (int)$data['role'] : (int)$original['role'];
-
-    $sql_update = "UPDATE users SET 
-                    first_name = '$first_name', 
-                    last_name = '$last_name', 
-                    email = '$email', 
-                    password = '$password', 
-                    role = $role, 
-                    artist_type = '$artist_type', 
-                    bio = '$bio', 
-                    profile_img_url = '$profile_img_url' 
-                  WHERE 
-                    id = $id_usuario_modificar";
-
-    if (mysqli_query($link, $sql_update)) {
-        outputJson(["status" => "success", "message" => "Perfil actualizado correctamente"]);
+    if (mysqli_query($link, $sql)) {
+        $userId = mysqli_insert_id($link);
+        $token = generarJWT($userId, $email, 0); 
+        outputJson([ "status" => "success", "token" => $token, "user" => ["id" => $userId, "first_name" => $first_name, "role" => 0] ], 201);
     } else {
         outputError(500);
     }
 }
 
-// phpMusicLab/api/index.php
+// POST Posts (AHORA CON BASE64)
+function postPosts() {
+    global $link;
+    // Leemos JSON en lugar de $_POST
+    $data = json_decode(file_get_contents('php://input'), true);
 
-function patchPosts($id)
-{
+    if (!isset($data['user_id']) || !isset($data['title'])) { outputError(400); }
+    
+    $userId = mysqli_real_escape_string($link, $data['user_id']);
+    $title = mysqli_real_escape_string($link, $data['title']);
+    $description = isset($data['description']) ? mysqli_real_escape_string($link, $data['description']) : '';
+    $fileType = mysqli_real_escape_string($link, $data['file_type']);
+    
+    $fileUrl = 'none';
+
+    // Manejo de Base64 para el archivo del post (audio/pdf/etc)
+    if (isset($data['file_data']) && !empty($data['file_data']) && isset($data['file_name'])) {
+        $ext = pathinfo($data['file_name'], PATHINFO_EXTENSION);
+        // Sanitizamos nombre
+        $nombreArchivo = time() . "_" . preg_replace('/[^a-zA-Z0-9]/', '', basename($data['file_name'], ".".$ext)) . "." . $ext;
+        
+        if (guardarBase64($data['file_data'], $nombreArchivo)) {
+            $fileUrl = $nombreArchivo;
+        }
+    }
+
+    $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type) 
+            VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType')";
+
+    if (mysqli_query($link, $sql)) {
+        outputJson(["status" => "success", "message" => "Publicación procesada"]);
+    } else {
+        outputError(500);
+    }
+}
+
+// PATCH Users (Edición de Perfil con BASE64)
+function patchUsers($id) {
+    global $link;
+    
+    // 1. Validar token y permisos
+    $editor = validarToken(); 
+    $id_editor = (int) $editor['id'];
+    $rol_editor = (int) $editor['role'];
+    $id_usuario_modificar = (int) $id;
+
+    // 2. Obtener datos originales
+    $sql_search = "SELECT * FROM users WHERE id = $id_usuario_modificar";
+    $res_search = mysqli_query($link, $sql_search);
+    $original = mysqli_fetch_assoc($res_search);
+
+    if (!$original) { outputError(404); }
+
+    // 3. Verificación de Jerarquías
+    $rol_destino = (int)$original['role'];
+    $puedeEditar = false;
+    if ($id_editor == $id_usuario_modificar) $puedeEditar = true;
+    elseif ($rol_editor == 2) $puedeEditar = true;
+    elseif ($rol_editor == 1 && $rol_destino == 0) $puedeEditar = true;
+
+    if (!$puedeEditar) { outputError(401); }
+
+    // 4. Leer JSON (Datos de Texto)
+    $data = json_decode(file_get_contents('php://input'), true);
+
+    // Persistencia: si no viene el dato, se mantiene el original
+    $first_name = !empty($data['first_name']) ? mysqli_real_escape_string($link, $data['first_name']) : $original['first_name'];
+    $last_name = !empty($data['last_name']) ? mysqli_real_escape_string($link, $data['last_name']) : $original['last_name'];
+    $email = !empty($data['email']) ? mysqli_real_escape_string($link, $data['email']) : $original['email'];
+    $artist_type = !empty($data['artist_type']) ? mysqli_real_escape_string($link, $data['artist_type']) : $original['artist_type'];
+    $bio = isset($data['bio']) ? mysqli_real_escape_string($link, $data['bio']) : $original['bio'];
+    
+    $password = !empty($data['password']) ? password_hash($data['password'], PASSWORD_DEFAULT) : $original['password'];
+    $role = ($rol_editor == 2 && isset($data['role'])) ? (int)$data['role'] : (int)$original['role'];
+
+    // 5. Gestión de Imagen (Base64)
+    $profile_img_url = $original['profile_img_url'];
+    
+    // Esperamos recibir 'profile_img_data' (string base64) y 'profile_img_name'
+    if (isset($data['profile_img_data']) && !empty($data['profile_img_data']) && isset($data['profile_img_name'])) {
+        $ext = pathinfo($data['profile_img_name'], PATHINFO_EXTENSION);
+        $nombre_archivo = "profile_" . $id_usuario_modificar . "_" . time() . "." . $ext;
+        
+        if (guardarBase64($data['profile_img_data'], $nombre_archivo)) {
+            $profile_img_url = $nombre_archivo;
+            
+            // Borrar vieja si no es default
+            if ($original['profile_img_url'] !== 'default_profile.png') {
+                $ruta_vieja = "../uploads/" . $original['profile_img_url'];
+                if (file_exists($ruta_vieja)) { unlink($ruta_vieja); }
+            }
+        }
+    }
+
+    $sql_update = "UPDATE users SET 
+                    first_name = '$first_name', last_name = '$last_name', 
+                    email = '$email', password = '$password', 
+                    role = $role, artist_type = '$artist_type', 
+                    bio = '$bio', profile_img_url = '$profile_img_url' 
+                  WHERE id = $id_usuario_modificar";
+
+    if (mysqli_query($link, $sql_update)) {
+        outputJson([ "status" => "success", "new_img" => $profile_img_url ]);
+    } else {
+        outputError(500);
+    }
+}
+
+// PATCH Posts (Edición de Publicación con Base64)
+function patchPosts($id) {
     global $link;
     $editor = validarToken();
     $id_editor = (int)$editor['id'];
@@ -557,40 +340,27 @@ function patchPosts($id)
     $sql = "SELECT * FROM posts WHERE id = $id_post";
     $res = mysqli_query($link, $sql);
     $original = mysqli_fetch_assoc($res);
-
     if (!$original) { outputError(404); }
 
-    // Solo el autor o el Owner (rol 2) pueden editar
-    $id_autor = (int)$original['user_id'];
-    $puedeEditar = ($id_editor === $id_autor || $rol_editor === 2);
-    if (!$puedeEditar) { outputError(401); }
+    if ($id_editor !== (int)$original['user_id'] && $rol_editor !== 2) { outputError(401); }
 
-    $input = file_get_contents("php://input");
-    $data = json_decode($input, true);
-    if (!$data) { outputError(400); }
+    $data = json_decode(file_get_contents("php://input"), true);
 
-    // Sanitización: Mantiene el valor original si no se envía en el JSON
     $title = isset($data['title']) ? mysqli_real_escape_string($link, $data['title']) : $original['title'];
     $description = isset($data['description']) ? mysqli_real_escape_string($link, $data['description']) : $original['description'];
     $file_type = isset($data['file_type']) ? mysqli_real_escape_string($link, $data['file_type']) : $original['file_type'];
     $file_url = $original['file_url']; 
 
-    // Procesamiento de archivo Base64 (Camino 1)
-    if (isset($data['file_data']) && isset($data['file_url'])) {
+    // Base64 File
+    if (isset($data['file_data']) && !empty($data['file_data']) && isset($data['file_name'])) {
+        $ext = pathinfo($data['file_name'], PATHINFO_EXTENSION);
+        $nombre_nuevo = time() . "_" . preg_replace('/[^a-zA-Z0-9]/', '', basename($data['file_name'], ".".$ext)) . "." . $ext;
         
-        // PROTECCIÓN: Solo borramos si NO es la imagen del sistema
-        if ($original['file_url'] !== 'none' && $original['file_url'] !== 'default_profile.png') {
-            $ruta_vieja = "../uploads/" . $original['file_url'];
-            if (file_exists($ruta_vieja)) { 
-                unlink($ruta_vieja);
+        if (guardarBase64($data['file_data'], $nombre_nuevo)) {
+            if ($original['file_url'] !== 'none') {
+                $ruta_vieja = "../uploads/" . $original['file_url'];
+                if (file_exists($ruta_vieja)) { unlink($ruta_vieja); }
             }
-        }
-
-        $binario = base64_decode($data['file_data']);
-        $nombre_nuevo = basename($data['file_url']);
-        $ruta_nueva = "../uploads/" . $nombre_nuevo;
-
-        if (file_put_contents($ruta_nueva, $binario)) {
             $file_url = $nombre_nuevo;
         }
     }
@@ -598,117 +368,73 @@ function patchPosts($id)
     $sql_update = "UPDATE posts SET title = '$title', description = '$description', file_type = '$file_type', file_url = '$file_url' WHERE id = $id_post";
 
     if (mysqli_query($link, $sql_update)) {
-        outputJson(["status" => "success", "message" => "Publicación actualizada correctamente"]);
+        outputJson(["status" => "success"]);
     } else {
         outputError(500);
     }
 }
 
-
-
-function deleteUsers($id) 
-{
+// DELETE Users
+function deleteUsers($id) {
     global $link;
-    $id_eliminar = (int) $id;
-
-    //Validamos el token y obtenemos quién hace la petición
+    $id = (int)$id;
     $editor = validarToken();
-    $id_editor = (int) $editor['id'];
-    $rol_editor = (int) $editor['role'];
+    $rol_editor = (int)$editor['role'];
 
-    $sql_busqueda = "SELECT
-                        role
-                    FROM
-                        users
-                    WHERE
-                        id = $id_eliminar";
+    $sql_busqueda = "SELECT role, profile_img_url FROM users WHERE id = $id";
+    $res = mysqli_query($link, $sql_busqueda);
+    $usuario = mysqli_fetch_assoc($res);
 
-    $res_busqueda = mysqli_query($link, $sql_busqueda);
-    $usuario_a_borrar = mysqli_fetch_assoc($res_busqueda);
+    if (!$usuario) outputError(404);
+    if ($rol_editor < 1 || ($rol_editor == 1 && $usuario['role'] != 0)) outputError(401);
 
-    // si el usuario no existe... es un not found
-    if(!$usuario_a_borrar)
-    {
-        outputError(404);
+    // Borrar imagen física
+    if ($usuario['profile_img_url'] !== 'default_profile.png') {
+        $ruta = "../uploads/" . $usuario['profile_img_url'];
+        if (file_exists($ruta)) unlink($ruta);
     }
 
-    $rol_a_borrar = (int)$usuario_a_borrar['role'];
-
-    // Si NO es un usuario autorizado (Admin/Owner borrando a un Artista), denegar.
-    $es_autorizado = ($rol_editor >= 1 && $rol_a_borrar === 0);
-
-    if (!$es_autorizado) { 
-        outputError(401); // No autorizado si la condición NO se cumple
-    }
-
-    // Ejecución del DELETE
-    $sql_delete = "DELETE FROM 
-                        users 
-                    WHERE 
-                        id = $id_eliminar";
-    
-    if (mysqli_query($link, $sql_delete)) {
-        outputJson(["status" => "success", "message" => "Se eliminó el usuario correctamente"]);
-    } else {
-        outputError(500);
-    }
+    $sql = "DELETE FROM users WHERE id = $id";
+    if (mysqli_query($link, $sql)) outputJson(["status" => "success"]);
+    else outputError(500);
 }
 
-// Cualquiera puedo eliminar sus propios registros pero los admin y el Owner pueden borrar las publicaciones de los usuarios
-// Los admin no pueden tocar al Owner
-
-function deletePosts($id)
-{
+// DELETE Posts
+function deletePosts($id) {
     global $link;
-    $publicacion_a_eliminar = (int)$id;
-
-    // 1. Validamos quién está intentando borrar
+    $id = (int)$id;
     $editor = validarToken();
     $id_editor = (int)$editor['id'];
-    $editor_role = (int)$editor['role'];
+    $rol_editor = (int)$editor['role'];
 
-    // 2. Buscamos la publicación para saber quién es el dueño
-    $sql_busqueda = "SELECT user_id, file_url FROM posts WHERE id = $publicacion_a_eliminar";
-    $res = mysqli_query($link, $sql_busqueda);
+    $sql = "SELECT user_id, file_url FROM posts WHERE id = $id";
+    $res = mysqli_query($link, $sql);
     $post = mysqli_fetch_assoc($res);
+    
+    if (!$post) outputError(404);
+    if ($id_editor !== (int)$post['user_id'] && $rol_editor < 1) outputError(401);
 
-    if (!$post) {
-        outputError(404); // La publicación no existe
+    if ($post['file_url'] !== 'none') {
+        $ruta = "../uploads/" . $post['file_url'];
+        if (file_exists($ruta)) unlink($ruta);
     }
 
-    // 3. LÓGICA DE PERMISOS
-    // Se permite borrar SI:
-    // Es el dueño (id_editor == post[user_id]) 
-    // O SI es moderador/owner (editor_role >= 1)
-    $es_dueno = ($id_editor === (int)$post['user_id']);
-    $es_staff = ($editor_role >= 1);
-
-    if (!$es_dueno && !$es_staff) {
-        outputError(401); // Si no es ninguna de las anteriores, fuera.
-    }
-
-    // 4. Procedemos al borrado
-    $nombre_archivo = $post['file_url'];
-    $sql_delete = "DELETE FROM posts WHERE id = $publicacion_a_eliminar";
-
-    if (mysqli_query($link, $sql_delete)) {
-        
-        // 5. Borrado del archivo físico si no es un recurso del sistema
-        if ($nombre_archivo && $nombre_archivo !== 'none' && $nombre_archivo !== 'default_profile.png') {
-            $ruta_completa = "../uploads/" . $nombre_archivo;
-            
-            if (file_exists($ruta_completa)) {
-                unlink($ruta_completa);
-            }
-        }
-
-        outputJson([
-            "status" => "success", 
-            "message" => "Publicación y archivo eliminados correctamente"
-        ]);
-    } else {
-        outputError(500);
-    }
+    $sql = "DELETE FROM posts WHERE id = $id";
+    if (mysqli_query($link, $sql)) outputJson(["status" => "success"]);
+    else outputError(500);
 }
 
+// RESTORE DB
+function postRestore() {
+    global $link;
+    $data = json_decode(file_get_contents('php://input'), true);
+    if ($data['email'] === 'owner@gmail.com' && $data['password'] === 'admin123') {
+        $sql = file_get_contents('../database/musiclab_db.sql');
+        if (mysqli_multi_query($link, $sql)) {
+            outputJson(["status" => "success"]);
+        } else { outputError(500); }
+    } else {
+        header('HTTP/1.1 401 Unauthorized'); exit;
+    }
+}
 ?>
