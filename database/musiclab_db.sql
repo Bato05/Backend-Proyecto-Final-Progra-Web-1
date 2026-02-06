@@ -1,18 +1,9 @@
-SET FOREIGN_KEY_CHECKS = 0;
-DROP TABLE IF EXISTS `shared_content`;
-DROP TABLE IF EXISTS `messages`;
-DROP TABLE IF EXISTS `posts`;
-DROP TABLE IF EXISTS `followers`;
-DROP TABLE IF EXISTS `site_config`;
-DROP TABLE IF EXISTS `users`;
-SET FOREIGN_KEY_CHECKS = 1;
-
 -- phpMyAdmin SQL Dump
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 22-01-2026 a las 17:55:19
+-- Tiempo de generación: 06-02-2026 a las 15:38:10
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -33,50 +24,6 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
--- Estructura de tabla para la tabla `followers`
---
-
-CREATE TABLE `followers` (
-  `id` int(11) NOT NULL,
-  `follower_id` int(11) NOT NULL,
-  `followed_id` int(11) NOT NULL,
-  `status` enum('pending','accepted') DEFAULT 'pending'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Volcado de datos para la tabla `followers`
---
-
-INSERT INTO `followers` (`id`, `follower_id`, `followed_id`, `status`) VALUES
-(1, 4, 1, 'accepted'),
-(2, 5, 4, 'accepted');
-
--- --------------------------------------------------------
-
---
--- Estructura de tabla para la tabla `messages`
---
-
-CREATE TABLE `messages` (
-  `id` int(11) NOT NULL,
-  `sender_id` int(11) NOT NULL,
-  `receiver_id` int(11) NOT NULL,
-  `content` text NOT NULL,
-  `is_read` tinyint(1) DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Volcado de datos para la tabla `messages`
---
-
-INSERT INTO `messages` (`id`, `sender_id`, `receiver_id`, `content`, `is_read`, `created_at`) VALUES
-(1, 1, 4, 'Bienvenido a MusicLab, Julian.', 0, '2026-01-22 16:25:49'),
-(2, 4, 1, 'Gracias por la invitación.', 0, '2026-01-22 16:25:49');
-
--- --------------------------------------------------------
-
---
 -- Estructura de tabla para la tabla `posts`
 --
 
@@ -86,7 +33,8 @@ CREATE TABLE `posts` (
   `title` varchar(100) NOT NULL,
   `description` text DEFAULT NULL,
   `file_url` varchar(255) NOT NULL,
-  `file_type` enum('audio','lyric','score') NOT NULL,
+  `file_type` enum('audio','score','lyrics') NOT NULL,
+  `visibility` enum('public','private','followers') DEFAULT 'public',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -94,96 +42,42 @@ CREATE TABLE `posts` (
 -- Volcado de datos para la tabla `posts`
 --
 
-INSERT INTO `posts` (`id`, `user_id`, `title`, `description`, `file_url`, `file_type`, `created_at`) VALUES
-(1, 4, 'Nueva Demo Rock', 'Un adelanto de mi próximo EP.', 'audio_demo_1.mp3', 'audio', '2026-01-22 16:25:49'),
-(2, 5, 'Partitura Nocturno', 'Mi arreglo para piano.', 'nocturno_Chopin.pdf', 'score', '2026-01-22 16:25:49');
-
--- --------------------------------------------------------
-
---
--- Estructura de tabla para la tabla `shared_content`
---
-
-CREATE TABLE `shared_content` (
-  `id` int(11) NOT NULL,
-  `post_id` int(11) NOT NULL,
-  `target_user_id` int(11) NOT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
--- Estructura de tabla para la tabla `site_config`
---
-
-CREATE TABLE `site_config` (
-  `id` int(11) NOT NULL CHECK (`id` = 1),
-  `site_name` varchar(100) NOT NULL,
-  `active_css_theme` varchar(50) NOT NULL,
-  `accent_color` varchar(7) DEFAULT '#007bff',
-  `maintenance_mode` tinyint(1) DEFAULT 0,
-  `logo_url` varchar(255) DEFAULT NULL,
-  `welcome_text` text DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Volcado de datos para la tabla `site_config`
---
-
-INSERT INTO `site_config` (`id`, `site_name`, `active_css_theme`, `accent_color`, `maintenance_mode`, `logo_url`, `welcome_text`) VALUES
-(1, 'MusicLab', 'dark_theme', '#007bff', 0, NULL, 'Bienvenido a la red de artistas.');
-
--- --------------------------------------------------------
-
---
--- Estructura de tabla para la tabla `users`
---
-
-CREATE TABLE `users` (
-  `id` int(11) NOT NULL,
-  `first_name` varchar(50) NOT NULL,
-  `last_name` varchar(50) NOT NULL,
-  `email` varchar(100) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `role` tinyint(4) NOT NULL DEFAULT 0,
-  `artist_type` varchar(50) DEFAULT NULL,
-  `bio` text DEFAULT NULL,
-  `profile_img_url` varchar(255) DEFAULT 'default_profile.png',
-  `status` enum('active','suspended') DEFAULT 'active',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Volcado de datos para la tabla `users`
---
-
-INSERT INTO `users` (`id`, `first_name`, `last_name`, `email`, `password`, `role`, `artist_type`, `bio`, `profile_img_url`, `status`, `created_at`) VALUES
-(1, 'Bautista', 'Rodriguez', 'owner@gmail.com', '$2y$10$caqokU3g7s9R1nCzomrIs.DHlv4z8ruZDxUwHPFsndgFjYpVa7sm.', 2, 'Developer', 'Creador de MusicLab.', 'default_profile.png', 'active', '2026-01-22 16:25:49'),
-(2, 'Carlos', 'Admin', 'carlos@admin.com', '$2y$10$.of5E0Gdgnui8vdsc/hlzuP2POUm3P/DwW6CwQHSlIKc1qTmsvYmy', 1, 'Moderator', 'Gestión de comunidad.', 'default_profile.png', 'active', '2026-01-22 16:25:49'),
-(3, 'Elena', 'Gomez', 'elena@admin.com', '$2y$10$28Ncf5w6eUClpAVhZz9XbOt2oS87r9SnkChrni1QmE6PL7QMJoIuG', 1, 'Producer', 'Revisión de contenido.', 'default_profile.png', 'active', '2026-01-22 16:25:49'),
-(4, 'Julian', 'Casablancas', 'julian@user.com', '$2y$10$8oZbF7nMslZ8W/2PfxxDAO90v.JH0ezJBrNefEksB8aZe2fiWit0q', 0, 'Singer', 'Vocalista.', 'default_profile.png', 'active', '2026-01-22 16:25:49'),
-(5, 'Mariana', 'Sosa', 'mariana@user.com', '$2y$10$fY21LW2wLEGgxduSVpCcIulsrTcuw9HOJawvJ/Xzos90DPXyOnkKm', 0, 'Pianist', 'Pianista clásica.', 'default_profile.png', 'active', '2026-01-22 16:25:49'),
-(6, 'Kevin', 'Parker', 'kevin@user.com', '$2y$10$G285tBKLpivx02c6qjoIMe.mTH1iDBEnrYvBkVtZMDeLIFr7lOM4W', 0, 'Multi-instrumentalist', 'Tame Impala vibes.', 'default_profile.png', 'active', '2026-01-22 16:25:49');
+INSERT INTO `posts` (`id`, `user_id`, `title`, `description`, `file_url`, `file_type`, `visibility`, `created_at`) VALUES
+(1, 1, 'Bienvenida a MusicLab', 'Presentación oficial del proyecto.', 'welcome.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(2, 1, 'Roadmap 2026', 'Objetivos y mejoras planeadas.', 'roadmap_2026.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(3, 1, 'Demo plataforma', 'Audio de prueba interno.', 'demo_owner.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(4, 2, 'Reglas del foro', 'Lectura obligatoria para todos.', 'rules_v1.pdf', 'score', 'public', '2026-02-06 13:35:48'),
+(5, 2, 'Criterios de moderación', 'Guía interna del staff.', 'moderation.txt', 'lyrics', 'private', '2026-02-06 13:35:48'),
+(6, 3, 'Guía de soporte', 'Cómo reportar problemas.', 'support_guide.pdf', 'score', 'public', '2026-02-06 13:35:48'),
+(7, 3, 'Gestión de contenido', 'Buenas prácticas editoriales.', 'content_guidelines.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(8, 4, 'Riff de guitarra', 'Probando un riff nuevo.', 'riff_lucas.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(9, 4, 'Letra en progreso', 'Borrador de canción.', 'letra_lucas.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(10, 5, 'Ensayo vocal', 'Práctica de la tarde.', 'ensayo_sofia.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(11, 5, 'Letra soul', 'Nueva letra estilo soul.', 'soul_lyrics.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(12, 6, 'Bass line jazz', 'Línea de bajo para proyecto jazz.', 'bass_jazz.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(13, 6, 'Notas de ensayo', 'Ideas para mejorar groove.', 'bass_notes.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(14, 7, 'Partitura clásica', 'Obra para violín solo.', 'violin_score.pdf', 'score', 'public', '2026-02-06 13:35:48'),
+(15, 7, 'Fusión electrónica', 'Ideas clásicas + electrónica.', 'fusion_lucia.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(16, 8, 'Set techno', 'Set progresivo nocturno.', 'techno_set.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(17, 8, 'Notas de producción', 'Estructura del próximo track.', 'prod_notes.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(18, 9, 'Demo R&B', 'Voz y armonías suaves.', 'demo_rnb.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(19, 9, 'Letra emocional', 'Inspirada en experiencias personales.', 'letra_valentina.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(20, 10, 'Groove funk', 'Patrón rítmico funk.', 'funk_groove.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(21, 10, 'Rudimentos', 'Ejercicios diarios.', 'rudimentos.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(22, 11, 'Tema instrumental', 'Composición para piano.', 'piano_theme.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(23, 11, 'Idea soundtrack', 'Boceto para cine.', 'soundtrack_idea.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(24, 12, 'Pedales DIY', 'Probando cadena de efectos.', 'pedales_diy.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(25, 12, 'Setup actual', 'Configuración de equipo.', 'setup_nico.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(26, 13, 'Blues moderno', 'Improvisación en sax.', 'blues_sax.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(27, 13, 'Escalas favoritas', 'Ejercicios diarios.', 'escalas_sax.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(28, 14, 'Mezcla rock', 'Antes y después de la mezcla.', 'mix_rock.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(29, 14, 'Tips de mastering', 'Consejos básicos.', 'mastering_tips.txt', 'lyrics', 'public', '2026-02-06 13:35:48'),
+(30, 15, 'Cover rock nacional', 'Versión acústica.', 'cover_rock.mp3', 'audio', 'public', '2026-02-06 13:35:48'),
+(31, 15, 'Letra propia', 'Canción inspirada en los 90.', 'letra_paula.txt', 'lyrics', 'public', '2026-02-06 13:35:48');
 
 --
 -- Índices para tablas volcadas
 --
-
---
--- Indices de la tabla `followers`
---
-ALTER TABLE `followers`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `follower_id` (`follower_id`),
-  ADD KEY `followed_id` (`followed_id`);
-
---
--- Indices de la tabla `messages`
---
-ALTER TABLE `messages`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `sender_id` (`sender_id`),
-  ADD KEY `receiver_id` (`receiver_id`);
 
 --
 -- Indices de la tabla `posts`
@@ -193,108 +87,26 @@ ALTER TABLE `posts`
   ADD KEY `user_id` (`user_id`);
 
 --
--- Indices de la tabla `shared_content`
---
-ALTER TABLE `shared_content`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `post_id` (`post_id`),
-  ADD KEY `target_user_id` (`target_user_id`);
-
---
--- Indices de la tabla `site_config`
---
-ALTER TABLE `site_config`
-  ADD PRIMARY KEY (`id`);
-
---
--- Indices de la tabla `users`
---
-ALTER TABLE `users`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `email` (`email`);
-
---
 -- AUTO_INCREMENT de las tablas volcadas
 --
-
---
--- AUTO_INCREMENT de la tabla `followers`
---
-ALTER TABLE `followers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
---
--- AUTO_INCREMENT de la tabla `messages`
---
-ALTER TABLE `messages`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT de la tabla `posts`
 --
 ALTER TABLE `posts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
-
---
--- AUTO_INCREMENT de la tabla `shared_content`
---
-ALTER TABLE `shared_content`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT de la tabla `users`
---
-ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
 
 --
 -- Restricciones para tablas volcadas
 --
 
 --
--- Filtros para la tabla `followers`
---
-ALTER TABLE `followers`
-  ADD CONSTRAINT `followers_ibfk_1` FOREIGN KEY (`follower_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `followers_ibfk_2` FOREIGN KEY (`followed_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `messages`
---
-ALTER TABLE `messages`
-  ADD CONSTRAINT `messages_ibfk_1` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `messages_ibfk_2` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
-
---
 -- Filtros para la tabla `posts`
 --
 ALTER TABLE `posts`
   ADD CONSTRAINT `posts_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
-
---
--- Filtros para la tabla `shared_content`
---
-ALTER TABLE `shared_content`
-  ADD CONSTRAINT `shared_content_ibfk_1` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `shared_content_ibfk_2` FOREIGN KEY (`target_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
-
-
-/******credenciales*******/
-
-/*
-
-Rol	Usuario	Email	Contraseña (Texto Plano)
-
-owner bautista owner@gmail.com admin123
-Admin	Carlos Admin	carlos@admin.com	password
-Admin	Elena Gomez	elena@admin.com	elena2026
-Artista	Julian Casablancas	julian@user.com	strokes123
-Artista	Mariana Sosa	mariana@user.com	piano456
-Artista	Kevin Parker	kevin@user.com	psych123
-
-*/

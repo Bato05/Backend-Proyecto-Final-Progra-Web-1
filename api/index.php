@@ -139,13 +139,14 @@ function getUsersConParametros($id) {
 // GET Posts
 function getPosts() {
     global $link;
-    $sql = "SELECT p.id, p.title, p.description, p.file_url, p.file_type, p.created_at, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+    $sql = "SELECT p.id, user_id, p.title, p.description, p.file_url, p.file_type, p.visibility, p.created_at, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
             FROM posts p INNER JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC";
     $result = mysqli_query($link, $sql);
     if ($result === false) { outputError(500); }
     $ret = [];
     while ($fila = mysqli_fetch_assoc($result)) {
         settype($fila['id'], 'integer');
+        settype($fila['user_id'], 'integer');
         $ret[] = $fila;
     }
     outputJson($ret);
@@ -156,7 +157,7 @@ function getPostsConParametros($id = null) {
     global $link;
     $id_limpio = (int)$id;
     if ($id_limpio <= 0) { outputJson([]); die; }
-    $sql = "SELECT p.*, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+    $sql = "SELECT p.*, user_id, p.visibility, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
             FROM posts p INNER JOIN users u ON p.user_id = u.id WHERE p.user_id = $id_limpio ORDER BY p.created_at DESC";
     $result = mysqli_query($link, $sql);
     if ($result === false) { outputError(500); }
@@ -380,15 +381,28 @@ function deleteUsers($id) {
     $id = (int)$id;
     $editor = validarToken();
     $rol_editor = (int)$editor['role'];
+    $id_propio = (int)$editor['id']; // ID del que hace la petición
 
     $sql_busqueda = "SELECT role, profile_img_url FROM users WHERE id = $id";
     $res = mysqli_query($link, $sql_busqueda);
     $usuario = mysqli_fetch_assoc($res);
 
     if (!$usuario) outputError(404);
-    if ($rol_editor < 1 || ($rol_editor == 1 && $usuario['role'] != 0)) outputError(401);
 
-    // Borrar imagen física
+    // REGLA CRÍTICA: NO BORRAR AL OWNER (ROL 2)
+    if ((int)$usuario['role'] === 2) {
+        // Lanzamos error 403 (Forbidden) con mensaje explícito
+        outputJson(["status" => "error", "message" => "CRITICAL: Cannot delete Owner account."], 403);
+    }
+
+    // Permisos normales: Solo el mismo usuario o un admin/owner puede borrar
+    $es_propio = ($id_propio === $id);
+    $es_autoridad = ($rol_editor >= 1 && $usuario['role'] == 0); // Admin borra user
+    $es_owner = ($rol_editor == 2); // Owner borra a cualquiera (menos a sí mismo si ya pasó la regla arriba)
+
+    // Si NO es propio Y NO es autoridad Y NO es owner -> Error
+    if (!$es_propio && !$es_autoridad && !$es_owner) outputError(401);
+
     if ($usuario['profile_img_url'] !== 'default_profile.png') {
         $ruta = "../uploads/" . $usuario['profile_img_url'];
         if (file_exists($ruta)) unlink($ruta);
@@ -398,7 +412,6 @@ function deleteUsers($id) {
     if (mysqli_query($link, $sql)) outputJson(["status" => "success"]);
     else outputError(500);
 }
-
 // DELETE Posts
 function deletePosts($id) {
     global $link;
