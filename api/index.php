@@ -531,12 +531,21 @@ function getFollowersConParametros($id) {
  */
 function deleteFollowers($id) {
     global $link;
-    validarToken();
-    $id = (int)$id;
+    $user = validarToken(); // Obtenemos el usuario logueado
+    $follower_id = (int)$user['id']; 
+    $followed_id = (int)$id; // El ID que viene en la URL es al que queremos dejar de seguir
 
-    $sql = "DELETE FROM followers WHERE id = $id";
+    // Borramos DONDE yo soy el seguidor Y el otro es el seguido
+    $sql = "DELETE FROM followers WHERE follower_id = $follower_id AND followed_id = $followed_id";
+    
     if (mysqli_query($link, $sql)) {
-        outputJson(["status" => "success", "message" => "Dejaste de seguir a este artista"]);
+        // Verificamos si realmente se borró algo
+        if (mysqli_affected_rows($link) > 0) {
+            outputJson(["status" => "success", "message" => "Dejaste de seguir a este artista"]);
+        } else {
+            // Si no se borró nada, es porque no lo seguías, pero devolvemos success para que el front no se trabe
+            outputJson(["status" => "success", "message" => "No lo seguías, pero todo ok"]);
+        }
     } else {
         outputError(500);
     }
