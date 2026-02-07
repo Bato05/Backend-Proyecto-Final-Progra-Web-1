@@ -114,6 +114,7 @@ function getUsers() {
     while ($fila = mysqli_fetch_assoc($result)) {
         settype($fila['id'], 'integer');
         settype($fila['role'], 'integer');
+        settype($fila['status'], 'integer');
         $ret[] = $fila;
     }
     outputJson($ret);
@@ -123,13 +124,14 @@ function getUsers() {
 function getUsersConParametros($id) {
     global $link;
     $id = mysqli_real_escape_string($link, $id);
-    $sql = "SELECT id, first_name, last_name, password, email, role, artist_type, bio, profile_img_url, status, created_at FROM users WHERE id = $id";
+    $sql = "SELECT id, first_name, last_name, password, email, role, artist_type, bio, status ,profile_img_url, status, created_at FROM users WHERE id = $id";
     $result = mysqli_query($link, $sql);
     if ($result === false) { outputError(500); }
     $usuario = mysqli_fetch_assoc($result);
     if ($usuario) {
         settype($usuario['id'], 'integer');
         settype($usuario['role'], 'integer');
+        settype($fila['status'], 'integer');
         outputJson($usuario);
     } else {
         outputError(404);
@@ -437,11 +439,114 @@ function deletePosts($id) {
     else outputError(500);
 }
 
+/**
+ * POST /follow
+ * Crea una nueva relación de seguimiento.
+ * Espera un JSON: { "follower_id": X, "followed_id": Y }
+ */
+function postFollowers() {
+    global $link;
+    validarToken(); // Protegemos la ruta
+    $data = json_decode(file_get_contents('php://input'), true);
+
+    if (!isset($data['follower_id']) || !isset($data['followed_id'])) {
+        outputError(400);
+    }
+
+    $follower = (int)$data['follower_id'];
+    $followed = (int)$data['followed_id'];
+
+    if ($follower === $followed) {
+        outputJson(["status" => "error", "message" => "No puedes seguirte a ti mismo"], 400);
+    }
+
+    $sql = "INSERT INTO followers (follower_id, followed_id) VALUES ($follower, $followed)";
+
+    if (mysqli_query($link, $sql)) {
+        outputJson(["status" => "success", "message" => "Ahora sigues a este artista"], 201);
+    } else {
+        // Si ya existe devolvemos error 
+        if (mysqli_errno($link) == 1062) {
+            outputJson(["status" => "error", "message" => "Ya sigues a este artista"], 409);
+        }
+        outputError(500);
+    }
+}
+
+/**
+ * GET /follow
+ * Obtiene la lista global de todas las relaciones (opcional/admin)
+ */
+function getFollowers() {
+    global $link;
+    validarToken();
+    $sql = "SELECT * FROM followers";
+    $result = mysqli_query($link, $sql);
+    $ret = [];
+    while ($fila = mysqli_fetch_assoc($result)) {
+        settype($fila['id'], 'integer');
+        settype($fila['follower_id'], 'integer');
+        settype($fila['followed_id'], 'integer');
+        $ret[] = $fila;
+    }
+    outputJson($ret);
+}
+
+/**
+ * Obtiene quiénes siguen a un usuario específico o a quiénes sigue.
+ * Retorna ambos conteos y listas.
+ */
+function getFollowersConParametros($id) {
+    global $link;
+    $id = (int)$id;
+
+    // Obtener Seguidores 
+    $sql_followers = "SELECT u.id, u.first_name, u.last_name, u.profile_img_url 
+                      FROM followers f INNER JOIN users u ON f.follower_id = u.id 
+                      WHERE f.followed_id = $id";
+    $res_f = mysqli_query($link, $sql_followers);
+    $followers_list = [];
+    while($row = mysqli_fetch_assoc($res_f)) { $followers_list[] = $row; }
+
+    // Obtener aquellos que nos siguen
+    $sql_following = "SELECT u.id, u.first_name, u.last_name, u.profile_img_url 
+                      FROM followers f INNER JOIN users u ON f.followed_id = u.id 
+                      WHERE f.follower_id = $id";
+    $res_ing = mysqli_query($link, $sql_following);
+    $following_list = [];
+    while($row = mysqli_fetch_assoc($res_ing)) { $following_list[] = $row; }
+
+    outputJson([
+        "user_id" => $id,
+        "followers_count" => count($followers_list),
+        "following_count" => count($following_list),
+        "followers" => $followers_list,
+        "following" => $following_list
+    ]);
+}
+
+/**
+ * DELETE follow, lógica de Unfollow
+ * este borrará por el ID de la tabla followers.
+ */
+function deleteFollowers($id) {
+    global $link;
+    validarToken();
+    $id = (int)$id;
+
+    $sql = "DELETE FROM followers WHERE id = $id";
+    if (mysqli_query($link, $sql)) {
+        outputJson(["status" => "success", "message" => "Dejaste de seguir a este artista"]);
+    } else {
+        outputError(500);
+    }
+}
+
 // RESTORE DB
 function postRestore() {
     global $link;
     $data = json_decode(file_get_contents('php://input'), true);
-    if ($data['email'] === 'owner@gmail.com' && $data['password'] === 'admin123') {
+    if ($data['email'] === 'bautista.owner@gmail.com' && $data['password'] === '123456') {
         $sql = file_get_contents('../database/musiclab_db.sql');
         if (mysqli_multi_query($link, $sql)) {
             outputJson(["status" => "success"]);
@@ -450,4 +555,6 @@ function postRestore() {
         header('HTTP/1.1 401 Unauthorized'); exit;
     }
 }
+
+
 ?>
