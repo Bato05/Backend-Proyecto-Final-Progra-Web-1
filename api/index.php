@@ -141,7 +141,7 @@ function getUsersConParametros($id) {
 // GET Posts
 function getPosts() {
     global $link;
-    $sql = "SELECT p.id, user_id, p.title, p.description, p.file_url, p.file_type, p.visibility, p.created_at, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+    $sql = "SELECT p.id, user_id, p.title, p.description, p.file_url, p.file_type, p.visibility, p.destination_id, p.created_at, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
             FROM posts p INNER JOIN users u ON p.user_id = u.id ORDER BY p.created_at DESC";
     $result = mysqli_query($link, $sql);
     if ($result === false) { outputError(500); }
@@ -149,6 +149,7 @@ function getPosts() {
     while ($fila = mysqli_fetch_assoc($result)) {
         settype($fila['id'], 'integer');
         settype($fila['user_id'], 'integer');
+        settype($fila['destination_id'], 'integer');
         $ret[] = $fila;
     }
     outputJson($ret);
@@ -159,7 +160,7 @@ function getPostsConParametros($id = null) {
     global $link;
     $id_limpio = (int)$id;
     if ($id_limpio <= 0) { outputJson([]); die; }
-    $sql = "SELECT p.*, user_id, p.visibility, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
+    $sql = "SELECT p.*, user_id, p.visibility, p.destination_id, u.profile_img_url, CONCAT(u.first_name, ' ', u.last_name) as artist_name 
             FROM posts p INNER JOIN users u ON p.user_id = u.id WHERE p.user_id = $id_limpio ORDER BY p.created_at DESC";
     $result = mysqli_query($link, $sql);
     if ($result === false) { outputError(500); }
@@ -167,6 +168,7 @@ function getPostsConParametros($id = null) {
     while ($fila = mysqli_fetch_assoc($result)) {
         settype($fila['id'], 'integer');
         settype($fila['user_id'], 'integer');
+        settype($fila['destination_id'], 'integer');
         $ret[] = $fila;
     }
     outputJson($ret); 

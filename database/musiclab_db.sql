@@ -1,30 +1,112 @@
--- Configuración de compatibilidad y entorno
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Servidor: 127.0.0.1
+-- Tiempo de generación: 08-02-2026 a las 03:20:47
+-- Versión del servidor: 10.4.32-MariaDB
+-- Versión de PHP: 8.2.12
+
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
 SET time_zone = "+00:00";
 
--- Desactivar restricciones de llaves foráneas para permitir limpieza profunda
-SET FOREIGN_KEY_CHECKS = 0;
 
--- 1. LIMPIEZA TOTAL (Evita errores de "Table already exists")
-DROP TABLE IF EXISTS `shared_content`;
-DROP TABLE IF EXISTS `followers`;
-DROP TABLE IF EXISTS `posts`;
-DROP TABLE IF EXISTS `users`;
-DROP TABLE IF EXISTS `site_config`;
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
 
--- 2. CREACIÓN DE ESTRUCTURA (Con cotejamiento estándar utf8mb4)
+--
+-- Base de datos: `musiclab_db`
+--
 
-CREATE TABLE `site_config` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `site_name` varchar(100) NOT NULL,
-  `maintenance_mode` tinyint(1) DEFAULT 0,
-  `welcome_text` text DEFAULT NULL,
-  PRIMARY KEY (`id`)
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `followers`
+--
+
+CREATE TABLE `followers` (
+  `id` int(11) NOT NULL,
+  `follower_id` int(11) NOT NULL,
+  `followed_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Volcado de datos para la tabla `followers`
+--
+
+INSERT INTO `followers` (`id`, `follower_id`, `followed_id`) VALUES
+(1, 1, 2),
+(2, 1, 3),
+(3, 4, 1),
+(5, 5, 4),
+(6, 6, 1),
+(7, 7, 6),
+(8, 8, 7),
+(9, 9, 8),
+(10, 10, 9);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `posts`
+--
+
+CREATE TABLE `posts` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `title` varchar(100) NOT NULL,
+  `description` text DEFAULT NULL,
+  `file_url` varchar(255) NOT NULL,
+  `file_type` enum('audio','lyrics','score') NOT NULL,
+  `visibility` enum('public','followers','private') NOT NULL DEFAULT 'public',
+  `destination_id` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Disparadores `posts`
+--
+DELIMITER $$
+CREATE TRIGGER `check_follower_destination` BEFORE INSERT ON `posts` FOR EACH ROW BEGIN
+    IF NEW.visibility = 'followers' AND NEW.destination_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' 
+        SET MESSAGE_TEXT = 'Error: destination_id es obligatorio cuando la visibilidad es followers';
+    END IF;
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `site_config`
+--
+
+CREATE TABLE `site_config` (
+  `id` int(11) NOT NULL,
+  `site_name` varchar(100) NOT NULL,
+  `maintenance_mode` tinyint(1) DEFAULT 0,
+  `welcome_text` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `site_config`
+--
+
+INSERT INTO `site_config` (`id`, `site_name`, `maintenance_mode`, `welcome_text`) VALUES
+(1, 'MusicLab', 0, 'Collaborate with musicians from all over the world');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `users`
+--
+
 CREATE TABLE `users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id` int(11) NOT NULL,
   `first_name` varchar(50) NOT NULL,
   `last_name` varchar(50) NOT NULL,
   `email` varchar(100) NOT NULL,
@@ -34,51 +116,12 @@ CREATE TABLE `users` (
   `bio` text DEFAULT NULL,
   `profile_img_url` varchar(255) DEFAULT 'default_profile.png',
   `status` tinyint(4) DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `email` (`email`)
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE `posts` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
-  `title` varchar(100) NOT NULL,
-  `description` text DEFAULT NULL,
-  `file_url` varchar(255) NOT NULL,
-  `file_type` enum('audio','lyrics','score') NOT NULL,
-  `visibility` enum('public','followers','private') NOT NULL DEFAULT 'public',
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `posts_user_fk` (`user_id`),
-  CONSTRAINT `posts_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE TABLE `followers` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `follower_id` int(11) NOT NULL,
-  `followed_id` int(11) NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_follow` (`follower_id`,`followed_id`),
-  KEY `fk_followed` (`followed_id`),
-  CONSTRAINT `fk_followed` FOREIGN KEY (`followed_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_follower` FOREIGN KEY (`follower_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE TABLE `shared_content` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `post_id` int(11) NOT NULL,
-  `target_user_id` int(11) NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `post_id` (`post_id`),
-  KEY `target_user_id` (`target_user_id`),
-  CONSTRAINT `shared_content_ibfk_1` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `shared_content_ibfk_2` FOREIGN KEY (`target_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- 3. INSERCIÓN DE DATOS
-
-INSERT INTO `site_config` (`id`, `site_name`, `maintenance_mode`, `welcome_text`) VALUES
-(1, 'MusicLab', 0, 'Collaborate with musicians from all over the world');
+--
+-- Volcado de datos para la tabla `users`
+--
 
 INSERT INTO `users` (`id`, `first_name`, `last_name`, `email`, `password`, `role`, `artist_type`, `bio`, `profile_img_url`, `status`, `created_at`) VALUES
 (1, 'Bautista', 'Rodriguez', 'bautista.owner@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 2, 'Another', 'Dueño y creador de MusicLab.', 'owner.png', 0, '2026-02-06 22:38:11'),
@@ -97,20 +140,86 @@ INSERT INTO `users` (`id`, `first_name`, `last_name`, `email`, `password`, `role
 (14, 'Mariana', 'Silva', 'mariana.user@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Vocalist', 'Soprano en entrenamiento.', 'default_profile.png', 0, '2026-02-07 15:36:11'),
 (15, 'Federico', 'Torres', 'federico.user@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Drummer', 'Ritmos complejos y percusión latina.', 'default_profile.png', 0, '2026-02-07 15:36:11');
 
--- Ajustar AUTO_INCREMENT para los siguientes registros
-ALTER TABLE `users` AUTO_INCREMENT = 16;
+--
+-- Índices para tablas volcadas
+--
 
-INSERT INTO `followers` (`id`, `follower_id`, `followed_id`) VALUES
-(1, 1, 2),
-(2, 1, 3),
-(3, 4, 1),
-(5, 5, 4),
-(6, 6, 1),
-(7, 7, 6),
-(8, 8, 7),
-(9, 9, 8),
-(10, 10, 9);
+--
+-- Indices de la tabla `followers`
+--
+ALTER TABLE `followers`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_follow` (`follower_id`,`followed_id`),
+  ADD KEY `fk_followed` (`followed_id`);
 
--- Reactivar chequeos y finalizar transacción
-SET FOREIGN_KEY_CHECKS = 1;
+--
+-- Indices de la tabla `posts`
+--
+ALTER TABLE `posts`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `posts_user_fk` (`user_id`),
+  ADD KEY `fk_post_destination_user` (`destination_id`);
+
+--
+-- Indices de la tabla `site_config`
+--
+ALTER TABLE `site_config`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indices de la tabla `users`
+--
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `email` (`email`);
+
+--
+-- AUTO_INCREMENT de las tablas volcadas
+--
+
+--
+-- AUTO_INCREMENT de la tabla `followers`
+--
+ALTER TABLE `followers`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+
+--
+-- AUTO_INCREMENT de la tabla `posts`
+--
+ALTER TABLE `posts`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `site_config`
+--
+ALTER TABLE `site_config`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `users`
+--
+ALTER TABLE `users`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+
+--
+-- Restricciones para tablas volcadas
+--
+
+--
+-- Filtros para la tabla `followers`
+--
+ALTER TABLE `followers`
+  ADD CONSTRAINT `fk_followed` FOREIGN KEY (`followed_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_follower` FOREIGN KEY (`follower_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Filtros para la tabla `posts`
+--
+ALTER TABLE `posts`
+  ADD CONSTRAINT `fk_post_destination_user` FOREIGN KEY (`destination_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `posts_user_fk` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
