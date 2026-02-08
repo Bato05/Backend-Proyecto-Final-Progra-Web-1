@@ -232,19 +232,28 @@ function postPosts() {
     // Leemos JSON en lugar de $_POST
     $data = json_decode(file_get_contents('php://input'), true);
 
-    if (!isset($data['user_id']) || !isset($data['title'])) { outputError(400); }
+    if (!isset($data['user_id']) || !isset($data['title'])) { 
+        outputError(400); 
+    }
     
     $userId = mysqli_real_escape_string($link, $data['user_id']);
     $title = mysqli_real_escape_string($link, $data['title']);
     $description = isset($data['description']) ? mysqli_real_escape_string($link, $data['description']) : '';
     $fileType = mysqli_real_escape_string($link, $data['file_type']);
     
+    // CAPTURAMOS LOS NUEVOS CAMPOS
+    $visibility = isset($data['visibility']) ? mysqli_real_escape_string($link, $data['visibility']) : 'public';
+    
+    // Si destination_id no viene o es vacío, lo tratamos como NULL para SQL
+    $destinationId = (isset($data['destination_id']) && !empty($data['destination_id'])) 
+                     ? mysqli_real_escape_string($link, $data['destination_id']) 
+                     : "NULL";
+    
     $fileUrl = 'none';
 
-    // Manejo de Base64 para el archivo del post (audio/pdf/etc)
+    // Manejo de Base64 para el archivo del post
     if (isset($data['file_data']) && !empty($data['file_data']) && isset($data['file_name'])) {
         $ext = pathinfo($data['file_name'], PATHINFO_EXTENSION);
-        // Sanitizamos nombre
         $nombreArchivo = time() . "_" . preg_replace('/[^a-zA-Z0-9]/', '', basename($data['file_name'], ".".$ext)) . "." . $ext;
         
         if (guardarBase64($data['file_data'], $nombreArchivo)) {
@@ -252,12 +261,15 @@ function postPosts() {
         }
     }
 
-    $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type) 
-            VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType')";
+    // INSERT ACTUALIZADO CON LOS 7 CAMPOS
+    // Nota: $destinationId no lleva comillas simples si es NULL
+    $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type, visibility, destination_id) 
+            VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType', '$visibility', $destinationId)";
 
     if (mysqli_query($link, $sql)) {
         outputJson(["status" => "success", "message" => "Publicación procesada"]);
     } else {
+        // Si el Trigger falla (ej: followers sin destination_id), entrará por aquí
         outputError(500);
     }
 }
@@ -335,47 +347,100 @@ function patchUsers($id) {
 }
 
 // PATCH Posts (Edición de Publicación con Base64)
+// PATCH Posts (Edición de Publicación con Base64 y multi-ID)
 function patchPosts($id) {
     global $link;
+    
+    // 1. Validar Token y permisos
     $editor = validarToken();
     $id_editor = (int)$editor['id'];
     $rol_editor = (int)$editor['role'];
     $id_post = (int)$id;
 
+    // 2. Verificar existencia del post
     $sql = "SELECT * FROM posts WHERE id = $id_post";
     $res = mysqli_query($link, $sql);
     $original = mysqli_fetch_assoc($res);
-    if (!$original) { outputError(404); }
+    
+    if (!$original) { 
+        outputError(404); // Post no encontrado
+    }
 
-    if ($id_editor !== (int)$original['user_id'] && $rol_editor !== 2) { outputError(401); }
+    // 3. Verificar permisos (dueño del post o rol de administrador/owner)
+    if ($id_editor !== (int)$original['user_id'] && $rol_editor !== 2) { 
+        outputError(401); 
+    }
 
-    $data = json_decode(file_get_contents("php://input"), true);
+    // 4. Capturar y Validar el JSON de entrada
+    $input = file_get_contents("php://input");
+    $data = json_decode($input, true);
 
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        outputJson([
+            "status" => "error",
+            "message" => "JSON inválido recibido del frontend",
+            "debug_received" => $input
+        ]);
+        exit;
+    }
+
+    // 5. Capturar datos (si no vienen en el JSON, mantener los originales)
     $title = isset($data['title']) ? mysqli_real_escape_string($link, $data['title']) : $original['title'];
     $description = isset($data['description']) ? mysqli_real_escape_string($link, $data['description']) : $original['description'];
     $file_type = isset($data['file_type']) ? mysqli_real_escape_string($link, $data['file_type']) : $original['file_type'];
+    $visibility = isset($data['visibility']) ? mysqli_real_escape_string($link, $data['visibility']) : $original['visibility'];
+    
+    // Manejo de destination_id (NULL si no viene o está vacío)
+    $destination_id = (isset($data['destination_id']) && $data['destination_id'] !== "") 
+                      ? "'" . mysqli_real_escape_string($link, $data['destination_id']) . "'" 
+                      : "NULL";
+
     $file_url = $original['file_url']; 
 
-    // Base64 File
+    // 6. Gestión de nuevo archivo si existe
     if (isset($data['file_data']) && !empty($data['file_data']) && isset($data['file_name'])) {
         $ext = pathinfo($data['file_name'], PATHINFO_EXTENSION);
         $nombre_nuevo = time() . "_" . preg_replace('/[^a-zA-Z0-9]/', '', basename($data['file_name'], ".".$ext)) . "." . $ext;
         
         if (guardarBase64($data['file_data'], $nombre_nuevo)) {
-            if ($original['file_url'] !== 'none') {
+            // Borrar archivo anterior si no es el valor por defecto
+            if ($original['file_url'] !== 'none' && !empty($original['file_url'])) {
                 $ruta_vieja = "../uploads/" . $original['file_url'];
-                if (file_exists($ruta_vieja)) { unlink($ruta_vieja); }
+                if (file_exists($ruta_vieja)) { @unlink($ruta_vieja); }
             }
             $file_url = $nombre_nuevo;
         }
     }
 
-    $sql_update = "UPDATE posts SET title = '$title', description = '$description', file_type = '$file_type', file_url = '$file_url' WHERE id = $id_post";
+    // 7. SQL UPDATE
+    $sql_update = "UPDATE posts SET 
+                    title = '$title', 
+                    description = '$description', 
+                    file_type = '$file_type', 
+                    file_url = '$file_url',
+                    visibility = '$visibility',
+                    destination_id = $destination_id 
+                  WHERE id = $id_post";
 
     if (mysqli_query($link, $sql_update)) {
-        outputJson(["status" => "success"]);
+        // Devolvemos el post actualizado para que Angular pueda refrescar la vista sin recargar
+        outputJson([
+            "status" => "success", 
+            "message" => "Publicación actualizada",
+            "data" => [
+                "id" => $id_post,
+                "title" => $title,
+                "description" => $description,
+                "file_url" => $file_url
+            ]
+        ]);
     } else {
-        outputError(500);
+        // Si hay error en el SQL, lo mostramos para debuggear
+        outputJson([
+            "status" => "error",
+            "message" => "Error al ejecutar el UPDATE",
+            "mysql_error" => mysqli_error($link)
+        ]);
     }
 }
 
