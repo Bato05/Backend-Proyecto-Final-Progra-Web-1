@@ -293,53 +293,70 @@ function postPosts() {
 function patchUsers($id) {
     global $link;
     
-    // 1. Validar token y permisos
+    // 1. Validar token
     $editor = validarToken(); 
-    $id_editor = (int) $editor['id'];
-    $rol_editor = (int) $editor['role'];
-    $id_usuario_modificar = (int) $id;
+    // Asegúrate de dónde viene el ID y Role (a veces es $editor['id'], a veces $editor['data']['id'])
+    $id_editor = isset($editor['data']) ? (int)$editor['data']['id'] : (int)$editor['id'];
+    $rol_editor = isset($editor['data']) ? (int)$editor['data']['role'] : (int)$editor['role'];
+    
+    $id_usuario_modificar = (int)$id;
 
     // 2. Obtener datos originales
     $sql_search = "SELECT * FROM users WHERE id = $id_usuario_modificar";
     $res_search = mysqli_query($link, $sql_search);
     $original = mysqli_fetch_assoc($res_search);
 
-    if (!$original) { outputError(404); }
+    if (!$original) { outputJson(['status'=>'error', 'message'=>'Usuario no encontrado'], 404); }
 
-    // 3. Verificación de Jerarquías
+    // 3. Verificación de Jerarquías (Lógica corregida)
     $rol_destino = (int)$original['role'];
     $puedeEditar = false;
-    if ($id_editor == $id_usuario_modificar) $puedeEditar = true;
-    elseif ($rol_editor == 2) $puedeEditar = true;
-    elseif ($rol_editor == 1 && $rol_destino == 0) $puedeEditar = true;
 
-    if (!$puedeEditar) { outputError(401); }
+    // A. Es el mismo usuario
+    if ($id_editor === $id_usuario_modificar) {
+        $puedeEditar = true;
+    }
+    // B. Es Owner (Rol 2) editando a cualquiera inferior
+    else if ($rol_editor === 2 && $rol_destino < 2) {
+        $puedeEditar = true;
+    }
+    // C. Es Admin (Rol 1) editando a un User (Rol 0)
+    else if ($rol_editor === 1 && $rol_destino === 0) {
+        $puedeEditar = true;
+    }
 
-    // 4. Leer JSON (Datos de Texto)
+    if (!$puedeEditar) { outputJson(['status'=>'error', 'message'=>'No tienes permiso'], 403); }
+
+    // 4. Leer Datos
     $data = json_decode(file_get_contents('php://input'), true);
 
-    // Persistencia: si no viene el dato, se mantiene el original
+    // Campos básicos
     $first_name = !empty($data['first_name']) ? mysqli_real_escape_string($link, $data['first_name']) : $original['first_name'];
     $last_name = !empty($data['last_name']) ? mysqli_real_escape_string($link, $data['last_name']) : $original['last_name'];
     $email = !empty($data['email']) ? mysqli_real_escape_string($link, $data['email']) : $original['email'];
     $artist_type = !empty($data['artist_type']) ? mysqli_real_escape_string($link, $data['artist_type']) : $original['artist_type'];
     $bio = isset($data['bio']) ? mysqli_real_escape_string($link, $data['bio']) : $original['bio'];
     
+    // Password (solo si se envía)
     $password = !empty($data['password']) ? password_hash($data['password'], PASSWORD_DEFAULT) : $original['password'];
-    $role = ($rol_editor == 2 && isset($data['role'])) ? (int)$data['role'] : (int)$original['role'];
-
-    // 5. Gestión de Imagen (Base64)
-    $profile_img_url = $original['profile_img_url'];
     
-    // Esperamos recibir 'profile_img_data' (string base64) y 'profile_img_name'
+    // Rol (Solo Owner puede cambiar roles)
+    $role = ($rol_editor === 2 && isset($data['role'])) ? (int)$data['role'] : (int)$original['role'];
+    
+    // Estado (Nuevo campo para Admin/Owner)
+    // Permitimos cambiar status si eres Admin u Owner
+    $status = (isset($data['status']) && ($rol_editor === 1 || $rol_editor === 2)) 
+              ? (int)$data['status'] 
+              : (int)$original['status'];
+
+    // 5. Gestión de Imagen
+    $profile_img_url = $original['profile_img_url'];
     if (isset($data['profile_img_data']) && !empty($data['profile_img_data']) && isset($data['profile_img_name'])) {
         $ext = pathinfo($data['profile_img_name'], PATHINFO_EXTENSION);
         $nombre_archivo = "profile_" . $id_usuario_modificar . "_" . time() . "." . $ext;
         
         if (guardarBase64($data['profile_img_data'], $nombre_archivo)) {
             $profile_img_url = $nombre_archivo;
-            
-            // Borrar vieja si no es default
             if ($original['profile_img_url'] !== 'default_profile.png') {
                 $ruta_vieja = "../uploads/" . $original['profile_img_url'];
                 if (file_exists($ruta_vieja)) { unlink($ruta_vieja); }
@@ -347,17 +364,23 @@ function patchUsers($id) {
         }
     }
 
+    // 6. Update
     $sql_update = "UPDATE users SET 
-                    first_name = '$first_name', last_name = '$last_name', 
-                    email = '$email', password = '$password', 
-                    role = $role, artist_type = '$artist_type', 
-                    bio = '$bio', profile_img_url = '$profile_img_url' 
+                    first_name = '$first_name', 
+                    last_name = '$last_name', 
+                    email = '$email', 
+                    password = '$password', 
+                    role = $role, 
+                    artist_type = '$artist_type', 
+                    bio = '$bio', 
+                    profile_img_url = '$profile_img_url',
+                    status = $status 
                   WHERE id = $id_usuario_modificar";
 
     if (mysqli_query($link, $sql_update)) {
         outputJson([ "status" => "success", "new_img" => $profile_img_url ]);
     } else {
-        outputError(500);
+        outputJson(['status'=>'error', 'message'=>mysqli_error($link)], 500);
     }
 }
 
@@ -461,40 +484,62 @@ function patchPosts($id) {
 // DELETE Users
 function deleteUsers($id) {
     global $link;
-    $id = (int)$id;
+    $id_usuario_eliminar = (int)$id;
+    
+    // 1. Validar Token (Extracción robusta)
     $editor = validarToken();
-    $rol_editor = (int)$editor['role'];
-    $id_propio = (int)$editor['id']; // ID del que hace la petición
+    $id_editor = isset($editor['data']) ? (int)$editor['data']['id'] : (int)$editor['id'];
+    $rol_editor = isset($editor['data']) ? (int)$editor['data']['role'] : (int)$editor['role'];
 
-    $sql_busqueda = "SELECT role, profile_img_url FROM users WHERE id = $id";
+    // 2. Obtener datos del usuario a eliminar
+    $sql_busqueda = "SELECT role, profile_img_url FROM users WHERE id = $id_usuario_eliminar";
     $res = mysqli_query($link, $sql_busqueda);
-    $usuario = mysqli_fetch_assoc($res);
+    $usuario_destino = mysqli_fetch_assoc($res);
 
-    if (!$usuario) outputError(404);
+    if (!$usuario_destino) { outputJson(['status'=>'error', 'message'=>'Usuario no encontrado'], 404); }
 
-    // REGLA CRÍTICA: NO BORRAR AL OWNER (ROL 2)
-    if ((int)$usuario['role'] === 2) {
-        // Lanzamos error 403 (Forbidden) con mensaje explícito
-        outputJson(["status" => "error", "message" => "CRITICAL: Cannot delete Owner account."], 403);
+    $rol_destino = (int)$usuario_destino['role'];
+
+    // 3. MATRIZ DE PERMISOS (Lógica Clara)
+    $puede_eliminar = false;
+
+    // Caso A: Usuario se elimina a sí mismo (Excepto si es Owner, por seguridad del sistema)
+    if ($id_editor === $id_usuario_eliminar) {
+        if ($rol_destino === 2) {
+             outputJson(["status" => "error", "message" => "El Owner no puede eliminarse a sí mismo."], 403);
+        }
+        $puede_eliminar = true;
+    }
+    // Caso B: Owner elimina a cualquiera (menos a otro Owner si existiera)
+    else if ($rol_editor === 2 && $rol_destino < 2) {
+        $puede_eliminar = true;
+    }
+    // Caso C: Admin elimina a Usuario normal
+    else if ($rol_editor === 1 && $rol_destino === 0) {
+        $puede_eliminar = true;
     }
 
-    // Permisos normales: Solo el mismo usuario o un admin/owner puede borrar
-    $es_propio = ($id_propio === $id);
-    $es_autoridad = ($rol_editor >= 1 && $usuario['role'] == 0); // Admin borra user
-    $es_owner = ($rol_editor == 2); // Owner borra a cualquiera (menos a sí mismo si ya pasó la regla arriba)
-
-    // Si NO es propio Y NO es autoridad Y NO es owner -> Error
-    if (!$es_propio && !$es_autoridad && !$es_owner) outputError(401);
-
-    if ($usuario['profile_img_url'] !== 'default_profile.png') {
-        $ruta = "../uploads/" . $usuario['profile_img_url'];
-        if (file_exists($ruta)) unlink($ruta);
+    if (!$puede_eliminar) {
+        outputJson(['status'=>'error', 'message'=>'No tienes permiso para eliminar este usuario'], 403);
     }
 
-    $sql = "DELETE FROM users WHERE id = $id";
-    if (mysqli_query($link, $sql)) outputJson(["status" => "success"]);
-    else outputError(500);
+    // 4. Proceder con el borrado
+    // Borrar foto si no es la default
+    if ($usuario_destino['profile_img_url'] !== 'default_profile.png') {
+        $ruta = "../uploads/" . $usuario_destino['profile_img_url'];
+        if (file_exists($ruta)) { unlink($ruta); }
+    }
+
+    // El borrado en cascada de SQL se encarga de posts y followers
+    $sql = "DELETE FROM users WHERE id = $id_usuario_eliminar";
+    
+    if (mysqli_query($link, $sql)) {
+        outputJson(["status" => "success", "message" => "Usuario eliminado correctamente"]);
+    } else {
+        outputJson(['status'=>'error', 'message'=>mysqli_error($link)], 500);
+    }
 }
+
 // DELETE Posts
 function deletePosts($id) {
     global $link;
