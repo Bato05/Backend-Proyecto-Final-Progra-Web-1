@@ -621,11 +621,53 @@ function deleteFollowers($id) {
 function postRestore() {
     global $link;
     $data = json_decode(file_get_contents('php://input'), true);
+
     if ($data['email'] === 'bautista.owner@gmail.com' && $data['password'] === '123456') {
-        $sql = file_get_contents('../database/musiclab_db.sql');
-        if (mysqli_multi_query($link, $sql)) {
-            outputJson(["status" => "success"]);
-        } else { outputError(500); }
+        
+        $archivo_sql = '../database/musiclab_db.sql';
+        
+        if (!file_exists($archivo_sql)) {
+            outputJson(["status" => "error", "message" => "Archivo SQL no encontrado"], 500);
+        }
+
+        $sql_content = file_get_contents($archivo_sql);
+
+        // Ejecutar multi-query
+        if (mysqli_multi_query($link, $sql_content)) {
+            $error_encontrado = null;
+            
+            // Recorrer todos los resultados uno por uno
+            do {
+                // Liberar resultado actual si existe
+                if ($result = mysqli_store_result($link)) {
+                    mysqli_free_result($result);
+                }
+                
+                // Verificar si hubo error al preparar el SIGUIENTE resultado
+                if (mysqli_errno($link)) {
+                    $error_encontrado = mysqli_error($link);
+                    break; // Salimos del bucle ante el primer error
+                }
+            } while (mysqli_more_results($link) && mysqli_next_result($link));
+
+            // Si salimos del bucle y hubo error
+            if ($error_encontrado) {
+                outputJson([
+                    "status" => "error", 
+                    "message" => "La restauración se detuvo por un error SQL: " . $error_encontrado
+                ], 500);
+            } else {
+                outputJson(["status" => "success", "message" => "Base de datos restaurada correctamente."]);
+            }
+
+        } else {
+            // Error en la primera instrucción
+            outputJson([
+                "status" => "error", 
+                "message" => "Error inicial MySQL: " . mysqli_error($link)
+            ], 500);
+        }
+
     } else {
         header('HTTP/1.1 401 Unauthorized'); exit;
     }
