@@ -174,6 +174,21 @@ function getPostsConParametros($id = null) {
     outputJson($ret); 
 }
 
+// GET site_config
+function getSiteconfig() {
+    global $link;
+    $sql = "SELECT * FROM site_config";
+    $result = mysqli_query($link, $sql);
+    if ($result===false) { outputError(500); }
+    $ret = [];
+    while ($fila = mysqli_fetch_assoc($result)) {
+        settype($fila['id'], 'integer');
+        settype($fila['maintenance_mode'], 'integer');
+        $ret[] = $fila;
+    }
+    outputJson($ret);
+}
+
 // POST Login
 function postLogin() {
     global $link;
