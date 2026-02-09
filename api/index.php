@@ -346,8 +346,7 @@ function patchUsers($id) {
     }
 }
 
-// PATCH Posts (Edición de Publicación con Base64)
-// PATCH Posts (Edición de Publicación con Base64 y multi-ID)
+// PATCH Posts (Edición de Publicación con Base64 y ID de destino)
 function patchPosts($id) {
     global $link;
     
