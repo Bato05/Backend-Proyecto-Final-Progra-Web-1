@@ -86,19 +86,63 @@ function validarToken() {
  * Recibe: string base64 y nombre del archivo destino
  * Retorna: true si guardó, false si falló
  */
+// --- FUNCIÓN AUXILIAR IMPRESCINDIBLE ---
+// Copia esto fuera de patchUsers, al final de tu archivo PHP
+
 function guardarBase64($base64_string, $nombre_archivo) {
-    // Si viene con el prefijo "data:image/png;base64,", lo quitamos
-    if (strpos($base64_string, ',') !== false) {
-        $data = explode(',', $base64_string);
-        $base64_string = $data[1];
+    // 1. Usar RUTA ABSOLUTA (Fundamental en Windows/XAMPP)
+    // __DIR__ es la carpeta actual (api). Subimos un nivel y entramos a uploads.
+    $ruta_carpeta = __DIR__ . "/../uploads/"; 
+    $ruta_destino = $ruta_carpeta . $nombre_archivo;
+
+    // --- BLOQUE DE DIAGNÓSTICO (Crea un archivo debug.txt en la carpeta api) ---
+    $logMsg = "\n[" . date('Y-m-d H:i:s') . "] Intentando guardar: $nombre_archivo\n";
+    $logMsg .= "Ruta destino: $ruta_destino\n";
+
+    // 2. Verificar si existe la carpeta
+    if (!file_exists($ruta_carpeta)) {
+        $logMsg .= "AVISO: La carpeta uploads no existe. Intentando crear...\n";
+        // 0777 da permisos totales. 'true' permite crear subdirectorios si faltan.
+        if (!mkdir($ruta_carpeta, 0777, true)) {
+            $logMsg .= "ERROR FATAL: No se pudo crear la carpeta uploads. Revisa permisos.\n";
+            file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
+            return false;
+        }
     }
-    
-    $data = base64_decode($base64_string);
-    if ($data === false) return false;
-    
-    $ruta = "../uploads/" . $nombre_archivo;
-    return file_put_contents($ruta, $data);
+
+    // 3. Limpiar la cadena Base64
+    // Angular manda "data:image/jpeg;base64,/9j/4AAQ..."
+    // Tenemos que quitar la primera parte antes de la coma.
+    if (strpos($base64_string, ',') !== false) {
+        $partes = explode(',', $base64_string);
+        $base64_limpio = $partes[1];
+    } else {
+        $base64_limpio = $base64_string;
+    }
+
+    // 4. Decodificar
+    $data_decodificada = base64_decode($base64_limpio);
+
+    if ($data_decodificada === false) {
+        $logMsg .= "ERROR FATAL: Falló la decodificación de Base64. El string podría estar corrupto.\n";
+        file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
+        return false;
+    }
+
+    // 5. Escribir el archivo
+    $bytes_escritos = file_put_contents($ruta_destino, $data_decodificada);
+
+    if ($bytes_escritos !== false) {
+        $logMsg .= "ÉXITO: Se escribieron $bytes_escritos bytes en el disco.\n";
+        file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
+        return true; 
+    } else {
+        $logMsg .= "ERROR FATAL: file_put_contents devolvió false. PHP no pudo escribir el archivo.\n";
+        file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
+        return false;
+    }
 }
+
 
 // =================================================================================
 //                                      API
@@ -124,14 +168,16 @@ function getUsers() {
 function getUsersConParametros($id) {
     global $link;
     $id = mysqli_real_escape_string($link, $id);
-    $sql = "SELECT id, first_name, last_name, password, email, role, artist_type, bio, status ,profile_img_url, status, created_at FROM users WHERE id = $id";
+    // Corrección: Eliminado 'status' duplicado en el SELECT
+    $sql = "SELECT id, first_name, last_name, password, email, role, artist_type, bio, profile_img_url, status, created_at FROM users WHERE id = $id";
     $result = mysqli_query($link, $sql);
     if ($result === false) { outputError(500); }
     $usuario = mysqli_fetch_assoc($result);
     if ($usuario) {
         settype($usuario['id'], 'integer');
         settype($usuario['role'], 'integer');
-        settype($fila['status'], 'integer');
+        // Corrección: Cambiado $fila['status'] por $usuario['status']
+        settype($usuario['status'], 'integer');
         outputJson($usuario);
     } else {
         outputError(404);
@@ -197,13 +243,20 @@ function postLogin() {
     if (!isset($data['email']) || !isset($data['password'])) { outputError(401); }
     
     $email = mysqli_real_escape_string($link, $data['email']);
-    $sql = "SELECT id, first_name, email, password, role, artist_type, bio, profile_img_url FROM users WHERE email = '$email'";
+    
+    // --- CORRECCIÓN AQUÍ: AGREGADO EL CAMPO 'status' AL SELECT ---
+    $sql = "SELECT id, first_name, email, password, role, artist_type, bio, profile_img_url, status FROM users WHERE email = '$email'";
+    // -------------------------------------------------------------
+    
     $resultado = mysqli_query($link, $sql);
     $usuario = mysqli_fetch_assoc($resultado);
 
     if ($usuario && password_verify($data['password'], $usuario['password'])) {
         $token = generarJWT($usuario['id'], $usuario['email'], $usuario['role']);
         unset($usuario['password']);
+        // Aseguramos que status sea un número para el frontend
+        settype($usuario['status'], 'integer'); 
+        
         outputJson([ "status" => "success", "token" => $token, "user" => $usuario ], 200);
     } else {
         outputError(401);
@@ -732,6 +785,5 @@ function postRestore() {
         header('HTTP/1.1 401 Unauthorized'); exit;
     }
 }
-
 
 ?>
