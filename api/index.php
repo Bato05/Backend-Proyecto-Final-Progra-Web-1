@@ -90,29 +90,19 @@ function validarToken() {
 // Copia esto fuera de patchUsers, al final de tu archivo PHP
 
 function guardarBase64($base64_string, $nombre_archivo) {
-    // 1. Usar RUTA ABSOLUTA (Fundamental en Windows/XAMPP)
-    // __DIR__ es la carpeta actual (api). Subimos un nivel y entramos a uploads.
+    // 1. Definir rutas
     $ruta_carpeta = __DIR__ . "/../uploads/"; 
     $ruta_destino = $ruta_carpeta . $nombre_archivo;
 
-    // --- BLOQUE DE DIAGNÓSTICO (Crea un archivo debug.txt en la carpeta api) ---
-    $logMsg = "\n[" . date('Y-m-d H:i:s') . "] Intentando guardar: $nombre_archivo\n";
-    $logMsg .= "Ruta destino: $ruta_destino\n";
-
-    // 2. Verificar si existe la carpeta
+    // 2. Verificar si existe la carpeta, si no, crearla
     if (!file_exists($ruta_carpeta)) {
-        $logMsg .= "AVISO: La carpeta uploads no existe. Intentando crear...\n";
-        // 0777 da permisos totales. 'true' permite crear subdirectorios si faltan.
+        // Si falla al crear la carpeta, retornamos false directamente
         if (!mkdir($ruta_carpeta, 0777, true)) {
-            $logMsg .= "ERROR FATAL: No se pudo crear la carpeta uploads. Revisa permisos.\n";
-            file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
             return false;
         }
     }
 
-    // 3. Limpiar la cadena Base64
-    // Angular manda "data:image/jpeg;base64,/9j/4AAQ..."
-    // Tenemos que quitar la primera parte antes de la coma.
+    // 3. Limpiar la cadena Base64 (quitar el encabezado "data:image...")
     if (strpos($base64_string, ',') !== false) {
         $partes = explode(',', $base64_string);
         $base64_limpio = $partes[1];
@@ -124,21 +114,16 @@ function guardarBase64($base64_string, $nombre_archivo) {
     $data_decodificada = base64_decode($base64_limpio);
 
     if ($data_decodificada === false) {
-        $logMsg .= "ERROR FATAL: Falló la decodificación de Base64. El string podría estar corrupto.\n";
-        file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
         return false;
     }
 
     // 5. Escribir el archivo
     $bytes_escritos = file_put_contents($ruta_destino, $data_decodificada);
 
+    // Retornar true si se escribieron bytes, false si hubo error
     if ($bytes_escritos !== false) {
-        $logMsg .= "ÉXITO: Se escribieron $bytes_escritos bytes en el disco.\n";
-        file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
         return true; 
     } else {
-        $logMsg .= "ERROR FATAL: file_put_contents devolvió false. PHP no pudo escribir el archivo.\n";
-        file_put_contents(__DIR__ . '/debug.txt', $logMsg, FILE_APPEND);
         return false;
     }
 }
@@ -531,6 +516,71 @@ function patchPosts($id) {
             "message" => "Error al ejecutar el UPDATE",
             "mysql_error" => mysqli_error($link)
         ]);
+    }
+}
+
+// PATCH Site Config (Exclusivo Owner - Rol 2)
+function patchSiteconfig() {
+    global $link;
+
+    // 1. Validar Token y obtener datos del usuario que hace la petición
+    $solicitante = validarToken();
+    $rol_solicitante = isset($solicitante['role']) ? (int)$solicitante['role'] : 0;
+
+    // 2. Verificar permisos estrictos: SOLO EL OWNER (Rol 2)
+    if ($rol_solicitante !== 2) {
+        outputJson(['status' => 'error', 'message' => 'No tienes permiso para modificar la configuración del sitio.'], 403);
+    }
+
+    // 3. Capturar los datos enviados en el cuerpo de la petición (JSON)
+    $input = file_get_contents("php://input");
+    $data = json_decode($input, true);
+
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        outputJson(['status' => 'error', 'message' => 'JSON inválido'], 400);
+    }
+
+    // 4. Preparar los campos a actualizar
+    // Usamos el ID 1 porque la configuración es única para todo el sitio
+    $id_config = 1;
+
+    // Obtenemos la configuración actual para no sobrescribir con vacíos si no se envían todos los datos
+    $sql_actual = "SELECT * FROM site_config WHERE id = $id_config";
+    $res_actual = mysqli_query($link, $sql_actual);
+    $config_actual = mysqli_fetch_assoc($res_actual);
+
+    if (!$config_actual) {
+        // Si por alguna razón no existe la config ID 1, devolvemos error (o podrías hacer un INSERT)
+        outputJson(['status' => 'error', 'message' => 'Configuración no encontrada'], 404);
+    }
+
+    // Asignamos los nuevos valores o mantenemos los actuales si no vienen en el JSON
+    $site_name = isset($data['site_name']) ? mysqli_real_escape_string($link, $data['site_name']) : $config_actual['site_name'];
+    
+    // Para maintenance_mode, verificamos si viene setedado y lo convertimos a entero (0 o 1)
+    $maintenance_mode = isset($data['maintenance_mode']) ? (int)$data['maintenance_mode'] : (int)$config_actual['maintenance_mode'];
+    
+    $welcome_text = isset($data['welcome_text']) ? mysqli_real_escape_string($link, $data['welcome_text']) : $config_actual['welcome_text'];
+
+    // 5. Ejecutar la actualización
+    $sql_update = "UPDATE site_config SET 
+                    site_name = '$site_name', 
+                    maintenance_mode = $maintenance_mode, 
+                    welcome_text = '$welcome_text' 
+                   WHERE id = $id_config";
+
+    if (mysqli_query($link, $sql_update)) {
+        outputJson([
+            "status" => "success", 
+            "message" => "Configuración del sitio actualizada correctamente",
+            "data" => [
+                "site_name" => $site_name,
+                "maintenance_mode" => $maintenance_mode,
+                "welcome_text" => $welcome_text
+            ]
+        ]);
+    } else {
+        outputJson(['status' => 'error', 'message' => 'Error al actualizar la configuración: ' . mysqli_error($link)], 500);
     }
 }
 
