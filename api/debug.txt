@@ -1,16 +1,12 @@
 
-[2026-02-09 21:36:58] Intentando guardar: 1770669418_nocturnoChopin.pdf
-Ruta destino: C:\xampp\htdocs\phpMusicLab\api/../uploads/1770669418_nocturnoChopin.pdf
+[2026-02-10 15:31:37] Intentando guardar: profile_19_1770733897.png
+Ruta destino: C:\xampp\htdocs\phpMusicLab\api/../uploads/profile_19_1770733897.png
+ÉXITO: Se escribieron 108208 bytes en el disco.
+
+[2026-02-10 15:32:06] Intentando guardar: 1770733926_nocturnoChopin.pdf
+Ruta destino: C:\xampp\htdocs\phpMusicLab\api/../uploads/1770733926_nocturnoChopin.pdf
 ÉXITO: Se escribieron 2153 bytes en el disco.
 
-[2026-02-09 21:37:08] Intentando guardar: 1770669428_TrabajodeexamenfinalPW1.pdf
-Ruta destino: C:\xampp\htdocs\phpMusicLab\api/../uploads/1770669428_TrabajodeexamenfinalPW1.pdf
+[2026-02-10 15:44:16] Intentando guardar: 1770734656_TrabajodeexamenfinalPW1.pdf
+Ruta destino: C:\xampp\htdocs\phpMusicLab\api/../uploads/1770734656_TrabajodeexamenfinalPW1.pdf
 ÉXITO: Se escribieron 82745 bytes en el disco.
-
-[2026-02-09 22:01:59] Intentando guardar: profile_16_1770670919.png
-Ruta destino: C:\xampp\htdocs\phpMusicLab\api/../uploads/profile_16_1770670919.png
-ÉXITO: Se escribieron 108208 bytes en el disco.
-
-[2026-02-10 14:18:38] Intentando guardar: profile_17_1770729518.png
-Ruta destino: C:\xampp\htdocs\phpMusicLab\api/../uploads/profile_17_1770729518.png
-ÉXITO: Se escribieron 108208 bytes en el disco.
