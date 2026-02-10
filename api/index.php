@@ -223,28 +223,78 @@ function getSiteconfig() {
 // POST Login
 function postLogin() {
     global $link;
-    $data = json_decode(file_get_contents('php://input'), true);
 
-    if (!isset($data['email']) || !isset($data['password'])) { outputError(401); }
-    
+    $input = file_get_contents("php://input");
+    $data = json_decode($input, true);
+
+    if (!isset($data['email']) || !isset($data['password'])) {
+        outputJson(['status' => 'error', 'message' => 'Faltan datos'], 400);
+    }
+
     $email = mysqli_real_escape_string($link, $data['email']);
-    
-    // --- CORRECCIÓN AQUÍ: AGREGADO EL CAMPO 'status' AL SELECT ---
-    $sql = "SELECT id, first_name, email, password, role, artist_type, bio, profile_img_url, status FROM users WHERE email = '$email'";
-    // -------------------------------------------------------------
-    
-    $resultado = mysqli_query($link, $sql);
-    $usuario = mysqli_fetch_assoc($resultado);
+    $password = $data['password'];
 
-    if ($usuario && password_verify($data['password'], $usuario['password'])) {
-        $token = generarJWT($usuario['id'], $usuario['email'], $usuario['role']);
-        unset($usuario['password']);
-        // Aseguramos que status sea un número para el frontend
-        settype($usuario['status'], 'integer'); 
+    // 1. Buscar usuario
+    $sql = "SELECT * FROM users WHERE email = '$email'";
+    $result = mysqli_query($link, $sql);
+
+    if ($row = mysqli_fetch_assoc($result)) {
         
-        outputJson([ "status" => "success", "token" => $token, "user" => $usuario ], 200);
+        // 2. Verificar Contraseña
+        if (password_verify($password, $row['password'])) {
+            
+            // ======================================================
+            // LÓGICA DE MANTENIMIENTO (PERMITE ADMINS Y OWNER)
+            // ======================================================
+            
+            // A. Consultar estado del sitio
+            $sql_config = "SELECT maintenance_mode FROM site_config LIMIT 1";
+            $res_config = mysqli_query($link, $sql_config);
+            
+            if ($res_config && mysqli_num_rows($res_config) > 0) {
+                $config = mysqli_fetch_assoc($res_config);
+                
+                $maintenance = (int)$config['maintenance_mode'];
+                $userRole = (int)$row['role']; // 0=User, 1=Admin, 2=Owner
+
+                // B. CONDICIÓN BLINDADA:
+                // Si hay mantenimiento (1)
+                // Y el usuario es MENOR que 1 (es decir, es 0 / Usuario Común)
+                // (Esto asegura que Roles 1 y 2 pasen sin problemas)
+                if ($maintenance === 1 && $userRole < 1) {
+                    
+                    http_response_code(503); 
+                    echo json_encode([
+                        'status' => 'error', 
+                        'message' => 'Mantenimiento activado'
+                    ]);
+                    exit; // DETENER EJECUCIÓN
+                }
+            }
+            // ======================================================
+
+            // 3. Verificar estado de cuenta (Bloqueado/Activo)
+            if ((int)$row['status'] === 0) {
+                outputJson(['status' => 'error', 'message' => 'Usuario bloqueado.'], 403);
+                return;
+            }
+
+            // 4. Generar Token
+            $jwt = generarJWT($row['id'], $row['email'], $row['role']);
+            unset($row['password']);
+
+            outputJson([
+                'status' => 'success',
+                'message' => 'Login exitoso',
+                'token' => $jwt,
+                'user' => $row
+            ]);
+
+        } else {
+            outputJson(['status' => 'error', 'message' => 'Contraseña incorrecta'], 401);
+        }
     } else {
-        outputError(401);
+        outputJson(['status' => 'error', 'message' => 'Usuario no encontrado'], 404);
     }
 }
 

@@ -1,4 +1,4 @@
--- SCRIPT DE RESTAURACIÓN DEFINITIVO (Categorías Normalizadas)
+-- SCRIPT DE RESTAURACIÓN DEFINITIVO (Emails Normalizados)
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -68,24 +68,24 @@ CREATE TABLE `posts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 
--- 4. INSERTAR DATOS (Categorías Corregidas)
+-- 4. INSERTAR DATOS (Emails Corregidos)
 
 INSERT INTO `users` (`id`, `first_name`, `last_name`, `email`, `password`, `role`, `artist_type`, `bio`, `profile_img_url`, `status`, `created_at`) VALUES
 (1, 'Bautista', 'Rodriguez', 'bautista.owner@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 2, 'Another', 'Dueño y creador de MusicLab.', 'owner.png', 1, '2026-02-06 22:38:11'),
-(2, 'Alex', 'Thunder', 'alex@rock.com', '$2y$10$DummyHashForRock', 0, 'Guitarist', 'Riffs that shake the ground.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
-(3, 'Roxy', 'Blaze', 'roxy@rock.com', '$2y$10$DummyHashForRock', 0, 'Vocalist', 'Voice of the rebellion.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
-(4, 'Kurt', 'Vibe', 'kurt@grunge.com', '$2y$10$DummyHashForRock', 0, 'Guitarist', 'Grunge is not dead.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
-(5, 'Leo', 'King', 'leo@queen.com', '$2y$10$DummyHashForRock', 0, 'Pianist', 'Operatic rock enthusiast.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
-(6, 'Syd', 'Moon', 'syd@floyd.com', '$2y$10$DummyHashForRock', 0, 'Guitarist', 'Psychedelic sounds and echoes.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(7, 'Mick', 'Stone', 'mick@stones.com', '$2y$10$DummyHashForRock', 0, 'Vocalist', 'Rolling through the ages.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(8, 'James', 'Steel', 'james@metal.com', '$2y$10$DummyHashForRock', 0, 'Bassist', 'Heavy metal thunder.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(9, 'Ozzy', 'Dark', 'ozzy@doom.com', '$2y$10$DummyHashForRock', 0, 'Vocalist', 'Prince of darkness.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(10, 'Eddie', 'Speed', 'eddie@shred.com', '$2y$10$DummyHashForRock', 0, 'Guitarist', 'Faster than light tapping.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(11, 'Joan', 'Rebel', 'joan@punk.com', '$2y$10$DummyHashForRock', 0, 'Vocalist', 'Punk rock queen.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(12, 'Bruce', 'Boss', 'bruce@usa.com', '$2y$10$DummyHashForRock', 0, 'Saxophonist', 'Stories from the heartland.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(13, 'Paul', 'Echo', 'paul@u2.com', '$2y$10$DummyHashForRock', 0, 'Drummer', 'Anthems for the world.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(14, 'Steven', 'Lips', 'steven@aero.com', '$2y$10$DummyHashForRock', 0, 'Trumpeter', 'Sweet emotions and rock.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
-(15, 'Jimmy', 'Zep', 'jimmy@led.com', '$2y$10$DummyHashForRock', 0, 'DJ', 'Stairway to rock heaven.', 'default_profile.png', 1, '2026-02-07 15:36:11');
+(2, 'Alex', 'Thunder', 'alex@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Guitarist', 'Riffs that shake the ground.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
+(3, 'Roxy', 'Blaze', 'roxy@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Vocalist', 'Voice of the rebellion.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
+(4, 'Kurt', 'Vibe', 'kurt@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Guitarist', 'Grunge is not dead.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
+(5, 'Leo', 'King', 'leo@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Pianist', 'Operatic rock enthusiast.', 'default_profile.png', 1, '2026-02-06 22:38:11'),
+(6, 'Syd', 'Moon', 'syd@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Guitarist', 'Psychedelic sounds and echoes.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(7, 'Mick', 'Stone', 'mick@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Vocalist', 'Rolling through the ages.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(8, 'James', 'Steel', 'james@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Bassist', 'Heavy metal thunder.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(9, 'Ozzy', 'Dark', 'ozzy@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Vocalist', 'Prince of darkness.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(10, 'Eddie', 'Speed', 'eddie@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Guitarist', 'Faster than light tapping.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(11, 'Joan', 'Rebel', 'joan@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Vocalist', 'Punk rock queen.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(12, 'Bruce', 'Boss', 'bruce@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Saxophonist', 'Stories from the heartland.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(13, 'Paul', 'Echo', 'paul@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Drummer', 'Anthems for the world.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(14, 'Steven', 'Lips', 'steven@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'Trumpeter', 'Sweet emotions and rock.', 'default_profile.png', 1, '2026-02-07 15:36:11'),
+(15, 'Jimmy', 'Zep', 'jimmy@gmail.com', '$2y$10$suO72wgsmAXFCuUF/jk47eXepUINbCZmam/zFmSyFYAXyGo5yaYqa', 0, 'DJ', 'Stairway to rock heaven.', 'default_profile.png', 1, '2026-02-07 15:36:11');
 
 -- SITE_CONFIG
 INSERT INTO `site_config` (`id`, `site_name`, `maintenance_mode`, `welcome_text`) VALUES
