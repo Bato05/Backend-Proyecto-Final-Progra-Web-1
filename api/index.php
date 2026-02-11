@@ -1,6 +1,6 @@
 <?php
 
-// 1. CONFIGURACIÓN DE CORS Y HEADERS
+// 1. CONFIGURACIÓN DE CORS Y HEADERS, puente entre el backend y el frontend de angular dependiendo de las versiones
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Authorization, Content-Type");
 header("Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS");
@@ -11,6 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 // 2. CONEXIÓN Y CONFIGURACIÓN
+// incuye el $link
 require_once "../config/config.php";
 
 if (!isset($_GET['accion'])) {
@@ -83,11 +84,11 @@ function validarToken() {
 
 /**
  * Función auxiliar para decodificar y guardar archivos Base64
+ * necesario para traducir binario a string
  * Recibe: string base64 y nombre del archivo destino
  * Retorna: true si guardó, false si falló
  */
 // --- FUNCIÓN AUXILIAR IMPRESCINDIBLE ---
-// Copia esto fuera de patchUsers, al final de tu archivo PHP
 
 function guardarBase64($base64_string, $nombre_archivo) {
     // 1. Definir rutas
@@ -102,7 +103,7 @@ function guardarBase64($base64_string, $nombre_archivo) {
         }
     }
 
-    // 3. Limpiar la cadena Base64 (quitar el encabezado "data:image...")
+    // 3. Limpiar la cadena Base64 (quita el encabezado "data:image...")
     if (strpos($base64_string, ',') !== false) {
         $partes = explode(',', $base64_string);
         $base64_limpio = $partes[1];
@@ -110,7 +111,7 @@ function guardarBase64($base64_string, $nombre_archivo) {
         $base64_limpio = $base64_string;
     }
 
-    // 4. Decodificar
+    // 4. Decodificar en base64
     $data_decodificada = base64_decode($base64_limpio);
 
     if ($data_decodificada === false) {
@@ -153,7 +154,6 @@ function getUsers() {
 function getUsersConParametros($id) {
     global $link;
     $id = mysqli_real_escape_string($link, $id);
-    // Corrección: Eliminado 'status' duplicado en el SELECT
     $sql = "SELECT id, first_name, last_name, password, email, role, artist_type, bio, profile_img_url, status, created_at FROM users WHERE id = $id";
     $result = mysqli_query($link, $sql);
     if ($result === false) { outputError(500); }
@@ -161,7 +161,6 @@ function getUsersConParametros($id) {
     if ($usuario) {
         settype($usuario['id'], 'integer');
         settype($usuario['role'], 'integer');
-        // Corrección: Cambiado $fila['status'] por $usuario['status']
         settype($usuario['status'], 'integer');
         outputJson($usuario);
     } else {
@@ -243,9 +242,7 @@ function postLogin() {
         // 2. Verificar Contraseña
         if (password_verify($password, $row['password'])) {
             
-            // ======================================================
             // LÓGICA DE MANTENIMIENTO (PERMITE ADMINS Y OWNER)
-            // ======================================================
             
             // A. Consultar estado del sitio
             $sql_config = "SELECT maintenance_mode FROM site_config LIMIT 1";
@@ -257,7 +254,7 @@ function postLogin() {
                 $maintenance = (int)$config['maintenance_mode'];
                 $userRole = (int)$row['role']; // 0=User, 1=Admin, 2=Owner
 
-                // B. CONDICIÓN BLINDADA:
+                // B. CONDICIÓN ADICIONALES:
                 // Si hay mantenimiento (1)
                 // Y el usuario es MENOR que 1 (es decir, es 0 / Usuario Común)
                 // (Esto asegura que Roles 1 y 2 pasen sin problemas)
@@ -271,7 +268,6 @@ function postLogin() {
                     exit; // DETENER EJECUCIÓN
                 }
             }
-            // ======================================================
 
             // 3. Verificar estado de cuenta (Bloqueado/Activo)
             if ((int)$row['status'] === 0) {
@@ -329,10 +325,10 @@ function postUsers() {
     }
 }
 
-// POST Posts (AHORA CON BASE64)
+// POST Posts (EN BASE64 POR SI EL ARCHIVO ES UN .MP3)
 function postPosts() {
     global $link;
-    // Leemos JSON en lugar de $_POST
+    // Leemos JSON 
     $data = json_decode(file_get_contents('php://input'), true);
 
     if (!isset($data['user_id']) || !isset($data['title'])) { 
@@ -365,14 +361,13 @@ function postPosts() {
     }
 
     // INSERT ACTUALIZADO CON LOS 7 CAMPOS
-    // Nota: $destinationId no lleva comillas simples si es NULL
+    // Nota: $destinationId no lleva comillas simples por si es NULL
     $sql = "INSERT INTO posts (user_id, title, description, file_url, file_type, visibility, destination_id) 
             VALUES ($userId, '$title', '$description', '$fileUrl', '$fileType', '$visibility', $destinationId)";
 
     if (mysqli_query($link, $sql)) {
         outputJson(["status" => "success", "message" => "Publicación procesada"]);
     } else {
-        // Si el Trigger falla (ej: followers sin destination_id), entrará por aquí
         outputError(500);
     }
 }
@@ -383,7 +378,7 @@ function patchUsers($id) {
     
     // 1. Validar token
     $editor = validarToken(); 
-    // Asegúrate de dónde viene el ID y Role (a veces es $editor['id'], a veces $editor['data']['id'])
+    // Asegurar de dónde viene el ID y Role ($editor['id'], $editor['data']['id'])
     $id_editor = isset($editor['data']) ? (int)$editor['data']['id'] : (int)$editor['id'];
     $rol_editor = isset($editor['data']) ? (int)$editor['data']['role'] : (int)$editor['role'];
     
@@ -653,7 +648,7 @@ function deleteUsers($id) {
 
     $rol_destino = (int)$usuario_destino['role'];
 
-    // 3. MATRIZ DE PERMISOS (Lógica Clara)
+    // 3. MATRIZ DE PERMISOS 
     $puede_eliminar = false;
 
     // Caso A: Usuario se elimina a sí mismo (Excepto si es Owner, por seguridad del sistema)

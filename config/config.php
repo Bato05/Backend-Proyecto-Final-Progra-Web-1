@@ -5,6 +5,7 @@ define("DBUSER", "root");
 define("DBPASS", "");
 define("DBHOST", "localhost");
 
+// puente a la base de datos
 $link = mysqli_connect(DBHOST, DBUSER, DBPASS, DBBASE);
 if ($link === false) {
 print "Falló la conexión: ". mysqli_connect_error();
